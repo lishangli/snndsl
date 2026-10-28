@@ -1,0 +1,35 @@
+# =============================================================================
+# 最小可运行示例 —— 全部 DSL 语法只用了 12 行有效代码。
+#   snndsl run   examples/quickstart.snn --epochs 2
+#   snndsl infer examples/quickstart.snn --weights build/quickstart.pt --ascii
+# =============================================================================
+program quickstart
+
+temporal:
+    steps = 6
+
+# 浮点型神经元：v 是膜电位，i 是上一层注入的突触电流，s 是输出脉冲
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = fast_sigmoid(alpha=4.0)
+
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=1.0
+    dense  h  : 128 <- x  with scale=2.0
+    neuron h  -> LIF
+    dense  y  : 10  <- h  with scale=2.0
+    neuron y  -> LIF
+    output out <- y
+
+train:
+    data = mnist
+    epochs = 2
+    batch = 128
+    lr = 0.001
+    loss = ce

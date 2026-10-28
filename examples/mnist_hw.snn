@@ -1,0 +1,35 @@
+program mnist_hw
+const T_STEPS = 8
+const HIDDEN  = 256
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = zero
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v * (1 - s)
+    surrogate = fast_sigmoid(alpha=4.0)
+encoder rate:
+    gain = 1.0
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=1.0
+    dense  h1 : HIDDEN <- x  with scale=2.0
+    neuron h1 -> LIF
+    dense  y  : 10 <- h1     with scale=1.0
+    neuron y  -> LIF
+    output out <- y
+train:
+    data = mnist
+    epochs = 1
+    batch = 128
+    lr = 0.001
+infer:
+    mode = event
+    readout = spikes
+budget:
+    spikes_per_sample = 40000

@@ -1,0 +1,67 @@
+# =============================================================================
+# MNIST MLP-SNN  --  reference program for the snndsl toolchain
+#   compile: snndsl build examples/mnist_mlp.snn
+#   train  : snndsl run   examples/mnist_mlp.snn --epochs 3
+#
+# NOTE on the readout: with readout=spikes the LIF output layer saturates --
+# every class is either firing on all T steps or never, so the logits are
+# exactly one-hot and softmax gives meaningless confidences (23.2% / 8.5% ...).
+# argmax stays correct (96.5%), but the ranking information is wasted.
+# See examples/mnist_membrane.snn for the better head: 4 epochs -> 97.21%.
+# =============================================================================
+program mnist_mlp
+
+const T_STEPS = 8
+const HIDDEN  = 256
+
+# ---- global time semantics -------------------------------------------------
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = subtract
+
+# ---- neuron model: leaky integrate-and-fire --------------------------------
+# The body is executed in order every time step; 'i' is the synaptic input.
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = fast_sigmoid(alpha=4.0)
+
+# ---- input coding: constant current proportional to pixel intensity --------
+encoder rate:
+    gain = 1.0
+
+# ---- network ---------------------------------------------------------------
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=1.0
+    dense  h1 : HIDDEN <- x  with scale=2.0
+    neuron h1 -> LIF
+    dense  y  : 10 <- h1     with scale=2.0
+    neuron y  -> LIF
+    output out <- y with readout=spikes
+
+# ---- training recipe -------------------------------------------------------
+train:
+    data = mnist
+    epochs = 10
+    batch = 128
+    lr = 0.001
+    opt = adam
+    loss = ce
+    seed = 0
+    sched = cosine
+
+# ---- deployment constraints ------------------------------------------------
+infer:
+    mode = event
+    readout = spikes
+    quant = int8
+
+budget:
+    spikes_per_sample = 40000
+    latency_ms = 5.0

@@ -1,0 +1,78 @@
+{
+  "tau": 2.0,
+  "vendor": 1.4426950408889634,
+  "rows": [
+    {
+      "scale": 0.15,
+      "tag": "torch",
+      "direct": 0.018798828125,
+      "direct_hidden": 0.011867523193359375,
+      "multi_spike": 0.0005859375,
+      "matched": 0.00087890625,
+      "matched_hidden": 0.0
+    },
+    {
+      "scale": 0.15,
+      "tag": "nir",
+      "direct": 0.018896484375,
+      "direct_hidden": 0.0116729736328125,
+      "multi_spike": 0.0005859375,
+      "matched": 0.0015625,
+      "matched_hidden": 0.00087738037109375
+    },
+    {
+      "scale": 0.2,
+      "tag": "torch",
+      "direct": 0.0474609375,
+      "direct_hidden": 0.025770187377929688,
+      "multi_spike": 0.00673828125,
+      "matched": 0.00859375,
+      "matched_hidden": 1.71661376953125e-05
+    },
+    {
+      "scale": 0.2,
+      "tag": "nir",
+      "direct": 0.048486328125,
+      "direct_hidden": 0.025747299194335938,
+      "multi_spike": 0.00673828125,
+      "matched": 0.013134765625,
+      "matched_hidden": 0.0031337738037109375
+    },
+    {
+      "scale": 0.5,
+      "tag": "torch",
+      "direct": 0.100146484375,
+      "direct_hidden": 0.07195472717285156,
+      "multi_spike": 0.0904296875,
+      "matched": 0.094482421875,
+      "matched_hidden": 0.013631820678710938
+    },
+    {
+      "scale": 0.5,
+      "tag": "nir",
+      "direct": 0.10166015625,
+      "direct_hidden": 0.07579994201660156,
+      "multi_spike": 0.0904296875,
+      "matched": 0.099169921875,
+      "matched_hidden": 0.03420066833496094
+    },
+    {
+      "scale": 1.0,
+      "tag": "torch",
+      "direct": 0.108935546875,
+      "direct_hidden": 0.16497802734375,
+      "multi_spike": 0.105517578125,
+      "matched": 0.10869140625,
+      "matched_hidden": 0.12034034729003906
+    },
+    {
+      "scale": 1.0,
+      "tag": "nir",
+      "direct": 0.10908203125,
+      "direct_hidden": 0.16845130920410156,
+      "multi_spike": 0.105517578125,
+      "matched": 0.10908203125,
+      "matched_hidden": 0.13644027709960938
+    }
+  ]
+}

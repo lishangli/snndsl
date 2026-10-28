@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snndsl"
+version = "0.1.0"
+description = "A domain specific language and compiler for spiking neural networks"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+torch = ["torch>=2.0", "torchvision>=0.15"]
+nir = ["nir>=1.0"]
+report = ["matplotlib>=3.7"]
+full = ["torch>=2.0", "torchvision>=0.15", "nir>=1.0", "matplotlib>=3.7"]
+
+[project.scripts]
+snndsl = "snndsl.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["snndsl*"]

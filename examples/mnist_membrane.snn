@@ -1,0 +1,55 @@
+# =============================================================================
+# 同一个网络，换成 membrane readout 做分类头。
+#   spike readout  : 输出层每个类要么整段发放、要么完全不发 -> logits 退化成
+#                    one-hot，softmax 得到的"置信度"没有意义。
+#   membrane readout: 用发放前的膜电位当 logits，保留类间边际信息。
+#   snndsl run examples/mnist_membrane.snn --out build_mem
+# =============================================================================
+program mnist_membrane
+
+const T_STEPS = 8
+const HIDDEN  = 256
+
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = subtract
+
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = fast_sigmoid(alpha=4.0)
+
+encoder rate:
+    gain = 1.0
+
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=1.0
+    dense  h1 : HIDDEN <- x  with scale=2.0
+    neuron h1 -> LIF
+    dense  y  : 10 <- h1     with scale=1.0
+    neuron y  -> LIF
+    output out <- y with readout=membrane
+
+train:
+    data = mnist
+    epochs = 4
+    batch = 128
+    lr = 0.001
+    opt = adam
+    loss = ce
+    seed = 0
+    sched = cosine
+
+infer:
+    mode = event
+    readout = membrane
+    quant = int8
+
+budget:
+    spikes_per_sample = 40000

@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>snndsl · 神经形态计算的编译器层 — 投资价值简报</title>
+<style>
+  :root{
+    --bg:#0A0E17; --bg2:#111726; --card:#131A2A; --line:#1F2A3D;
+    --txt:#E6EAF2; --dim:#8B98AE; --dim2:#5F6B80;
+    --cyan:#22D3EE; --blue:#4A7BFF; --amber:#FBBF24; --orange:#FB923C;
+    --red:#F87171; --green:#34D399;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg); color:var(--txt);
+    font-family:"Inter","Helvetica Neue",-apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+    font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+    font-feature-settings:"tnum";
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 40px}
+  section{padding:88px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+
+  .kicker{
+    font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--cyan);font-weight:600;margin-bottom:18px;
+  }
+  h2{font-size:34px;line-height:1.3;font-weight:700;letter-spacing:-.02em;margin-bottom:16px}
+  h3{font-size:19px;font-weight:650;margin-bottom:10px;letter-spacing:-.01em}
+  .lead{font-size:18px;color:var(--dim);line-height:1.8;max-width:760px}
+  p{margin-bottom:14px}
+  strong{color:#fff;font-weight:650}
+  em{font-style:normal;color:var(--amber);font-weight:600}
+
+  /* ---------- HERO ---------- */
+  .hero{padding:156px 0 80px;border-top:none;position:relative;overflow:hidden}
+  .hero::before{
+    content:"";position:absolute;top:-260px;left:50%;transform:translateX(-50%);
+    width:900px;height:560px;
+    background:radial-gradient(ellipse at center,rgba(34,211,238,.16),transparent 65%);
+    pointer-events:none;
+  }
+  .hero .wrap{position:relative}
+  .badge{
+    display:inline-flex;align-items:center;gap:8px;
+    border:1px solid var(--line);background:rgba(34,211,238,.06);
+    padding:7px 15px;border-radius:100px;font-size:13px;color:var(--cyan);
+    margin-bottom:30px;
+  }
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 10px var(--cyan)}
+  h1{
+    font-size:56px;line-height:1.15;font-weight:750;letter-spacing:-.035em;
+    margin-bottom:26px;max-width:900px;
+  }
+  h1 .grad{
+    background:linear-gradient(100deg,var(--cyan),var(--blue));
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  }
+  .hero-sub{font-size:20px;color:var(--dim);max-width:700px;line-height:1.7;margin-bottom:52px}
+  .hero-sub b{color:var(--txt);font-weight:600}
+
+  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .stat{background:var(--card);padding:28px 26px}
+  .stat .n{font-size:38px;font-weight:750;letter-spacing:-.03em;line-height:1.1;color:var(--cyan)}
+  .stat .n small{font-size:20px;color:var(--dim);font-weight:500}
+  .stat .l{font-size:13px;color:var(--dim);margin-top:10px;line-height:1.5}
+
+  /* ---------- 通用卡片 ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px 32px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+
+  .quote{
+    border-left:3px solid var(--amber);background:rgba(251,191,36,.05);
+    padding:22px 26px;border-radius:0 10px 10px 0;margin:26px 0;
+    font-size:16px;color:#D9DFEA;line-height:1.75;
+  }
+  .quote cite{display:block;margin-top:12px;font-size:13px;color:var(--dim2);font-style:normal}
+
+  .chart-box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px 28px 22px;margin:36px 0}
+  .chart-title{font-size:14px;font-weight:650;color:var(--txt);margin-bottom:4px}
+  .chart-sub{font-size:12.5px;color:var(--dim2);margin-bottom:22px}
+  .chart-src{font-size:11.5px;color:var(--dim2);margin-top:16px;line-height:1.6}
+  svg{display:block;width:100%;height:auto}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px;margin:24px 0}
+  th{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);color:var(--dim);font-weight:600;font-size:12.5px;letter-spacing:.06em;text-transform:uppercase}
+  td{padding:16px 14px;border-bottom:1px solid rgba(31,42,61,.6);vertical-align:top;line-height:1.65}
+  tr:last-child td{border-bottom:none}
+  td.num{font-variant-numeric:tabular-nums;color:var(--cyan);font-weight:650}
+
+  .pill{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:5px;font-weight:600;letter-spacing:.02em}
+  .p-now{background:rgba(251,191,36,.14);color:var(--amber)}
+  .p-next{background:rgba(74,123,255,.14);color:#7B9FFF}
+  .p-risk{background:rgba(248,113,113,.13);color:var(--red)}
+  .p-ok{background:rgba(52,211,153,.13);color:var(--green)}
+
+  .footer{padding:60px 0 90px;border-top:1px solid var(--line);color:var(--dim2);font-size:13px;line-height:1.9}
+
+  /* ---------- 粘性导航 ---------- */
+  #nav{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    background:rgba(10,14,23,.82);backdrop-filter:blur(14px);
+    border-bottom:1px solid rgba(31,42,61,.7);
+    transition:transform .3s ease;
+  }
+  #nav .inner{
+    max-width:1080px;margin:0 auto;padding:0 40px;height:54px;
+    display:flex;align-items:center;gap:28px;
+  }
+  #nav .brand{font-size:13.5px;font-weight:750;letter-spacing:-.01em;color:var(--cyan);white-space:nowrap}
+  #nav .links{display:flex;gap:22px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
+  #nav .links::-webkit-scrollbar{display:none}
+  #nav a{
+    font-size:12.5px;color:var(--dim2);text-decoration:none;white-space:nowrap;
+    padding:4px 0;border-bottom:1.5px solid transparent;transition:color .18s,border-color .18s;
+  }
+  #nav a:hover{color:var(--txt);border-bottom-color:var(--cyan)}
+  #progress{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--cyan),var(--blue));z-index:60;width:0;transition:width .1s linear}
+
+  /* ---------- 类比带 ---------- */
+  .analogy{
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    background:linear-gradient(90deg,rgba(34,211,238,.05),rgba(74,123,255,.03) 55%,transparent);
+    padding:64px 0;
+  }
+  .analogy .wrap{display:grid;grid-template-columns:52px 1fr;gap:26px}
+  .analogy .mark{font-size:64px;line-height:.8;color:var(--cyan);opacity:.35;font-family:Georgia,serif}
+  .analogy p{font-size:20px;line-height:1.85;color:#C9D2E0;margin-bottom:14px}
+  .analogy p:last-child{margin-bottom:0}
+  .analogy b{color:#fff;font-weight:650}
+  .analogy .accent{
+    display:inline-block;margin-top:6px;padding:2px 0;
+    color:var(--cyan);font-weight:650;
+  }
+
+  .thesis{counter-reset:t;display:grid;gap:16px;margin-top:34px}
+  .thesis .item{display:grid;grid-template-columns:44px 1fr;gap:18px;align-items:start;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px 24px}
+  .thesis .item::before{
+    counter-increment:t;content:counter(t);
+    font-size:15px;font-weight:750;color:var(--bg);background:var(--cyan);
+    width:28px;height:28px;border-radius:8px;display:grid;place-items:center;margin-top:2px;
+  }
+  .thesis .item p{margin:0;font-size:15.5px;line-height:1.7}
+
+  .tl{position:relative;padding-left:26px;margin-top:28px}
+  .tl::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:2px;background:linear-gradient(var(--cyan),var(--line))}
+  .tl .ev{position:relative;padding-bottom:24px}
+  .tl .ev::before{content:"";position:absolute;left:-26px;top:8px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2.5px solid var(--cyan)}
+  .tl .ev.done::before{background:var(--cyan)}
+  .tl .d{font-size:12.5px;color:var(--cyan);font-weight:650;letter-spacing:.04em}
+  .tl .t{font-size:15px;margin-top:3px}
+  .tl .s{font-size:13px;color:var(--dim2);margin-top:2px}
+
+  @media(max-width:800px){
+    .wrap{padding:0 22px}
+    h1{font-size:36px} h2{font-size:26px} .lead{font-size:16px}
+    .stat-row,.grid2,.grid3{grid-template-columns:1fr}
+    section{padding:60px 0}
+  }
+  @media print{
+    @page{size:A4;margin:9mm 8mm}
+    #nav,#progress{display:none}
+    body{
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+      font-size:13.5px;line-height:1.65;
+    }
+    .wrap{max-width:100%;padding:0 11mm}
+    .stat-row{grid-template-columns:repeat(3,1fr)}
+    .grid2{grid-template-columns:1fr 1fr}
+    .grid3{grid-template-columns:repeat(3,1fr)}
+    .thesis .item{grid-template-columns:34px 1fr;gap:12px}
+    h1{font-size:33px} h2{font-size:23px} h3{font-size:15.5px}
+    .hero{padding:16px 0 20px}
+    .hero-sub{font-size:15px;margin-bottom:26px}
+    .lead{font-size:14.5px}
+    section{padding:30px 0;break-inside:auto}
+    .chart-box,.card,.analogy,table,tr,.thesis .item,.tl .ev{break-inside:avoid}
+    .chart-box{padding:18px 16px 12px;margin:18px 0}
+    .card{padding:18px 20px}
+    table{font-size:12px;margin:14px 0}
+    th{padding:8px 10px} td{padding:9px 10px}
+    .stat{padding:16px 14px}
+    .stat .n{font-size:27px}
+    .quote{padding:14px 16px;margin:14px 0;font-size:13.5px}
+    .analogy{padding:34px 0}
+    .analogy p{font-size:15.5px}
+    .kicker{margin-bottom:10px}
+    .footer{padding:30px 0 20px}
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<nav id="nav">
+  <div class="inner">
+    <span class="brand">snndsl</span>
+    <div class="links">
+      <a href="#market">市场</a>
+      <a href="#gap">结构性缺口</a>
+      <a href="#build">已验证</a>
+      <a href="#position">定位</a>
+      <a href="#moat">护城河</a>
+      <a href="#biz">商业模式</a>
+      <a href="#risk">风险</a>
+      <a href="#thesis">投资论点</a>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ================= HERO ================= -->
+<div class="hero">
+  <div class="wrap">
+    <div class="badge"><span class="dot"></span>种子期 · 端到端原型已跑通 · 单人团队</div>
+
+    <h1>神经形态芯片已经造出来了。<br><span class="grad">但没人会为它写程序。</span></h1>
+
+    <p class="hero-sub">
+      我们做的是这中间缺失的一层——<b>编译器</b>。把算法写成一份描述，同时产出<b style="white-space:nowrap">能训练的代码</b>、
+      <b style="white-space:nowrap">能在芯片上跑的硬件指令</b>、<b style="white-space:nowrap">能提前算出的成本账单</b>。
+      行业里最像的先例，是 <b>CUDA 之于 NVIDIA</b>：护城河不在硅，在软件。
+    </p>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="n">20.5<small>%</small></div>
+        <div class="l">神经形态 AI 芯片市场<br>2026–2034 年复合增速</div>
+      </div>
+      <div class="stat">
+        <div class="n" style="font-size:32px;letter-spacing:.02em">共识</div>
+        <div class="l">多份独立市场报告<br>都把「软件工具链不成熟」列为主要制约</div>
+      </div>
+      <div class="stat">
+        <div class="n">97.21<small>%</small></div>
+        <div class="l">原型在 MNIST 上的实测精度<br>全量 10000 张，非抽样</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================= 类比 ================= -->
+<div class="analogy">
+  <div class="wrap">
+    <div class="mark">&ldquo;</div>
+    <div>
+      <p>
+        1950 年代的计算机已经造出来了，但全世界只有几十个会写机器码的人能用它。
+        直到 <b>FORTRAN</b> 出现，才有了「程序员」这个职业，计算机才有了产业。
+      </p>
+      <p>
+        今天的神经形态芯片，正处在 <b>FORTRAN 出现之前的那一刻</b>：
+        芯片有了，但没有一门让人能写它的语言。每个想用它的人，都得先成为硬件专家。
+      </p>
+      <p><span class="accent">我们做的就是那门语言。</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 1. 市场 ================= -->
+<section id="market">
+  <div class="wrap">
+    <div class="kicker">01 — 市场</div>
+    <h2>钱不在芯片里，在让芯片能用起来的那层软件里</h2>
+    <p class="lead">
+      神经形态计算（模仿大脑工作方式的芯片）正从实验室走向量产。2026 年 6 月，BrainChip 的
+      AKD1500 开始量产出货；Intel 在 2025 年 7 月发布 Loihi 3；Innatera、SynSense 都在商业化。
+      这个赛道的资本热度已经跨过临界点——2026 年 4 月，Unconventional AI 拿到 4.75 亿美元种子轮，
+      是神经形态领域史上最大的一笔。
+    </p>
+
+    <div class="chart-box">
+      <div class="chart-title">全球神经形态 AI 芯片市场规模（十亿美元）</div>
+      <div class="chart-sub">2026 年之后为机构预测 · 2025 → 2034 增长约 5.7 倍</div>
+      <svg viewBox="0 0 800 360" role="img" aria-label="神经形态芯片市场增长曲线">
+        <defs>
+          <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.52"/>
+            <stop offset="100%" stop-color="#22D3EE" stop-opacity="0.03"/>
+          </linearGradient>
+          <linearGradient id="lineG" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.45"/>
+            <stop offset="100%" stop-color="#4A7BFF"/>
+          </linearGradient>
+        </defs>
+
+        <!-- 网格 -->
+        <g stroke="#1F2A3D" stroke-width="1">
+          <line x1="80" y1="300" x2="760" y2="300"/>
+          <line x1="80" y1="262.1" x2="760" y2="262.1" stroke-dasharray="3 5"/>
+          <line x1="80" y1="224.2" x2="760" y2="224.2" stroke-dasharray="3 5"/>
+          <line x1="80" y1="186.4" x2="760" y2="186.4" stroke-dasharray="3 5"/>
+          <line x1="80" y1="148.5" x2="760" y2="148.5" stroke-dasharray="3 5"/>
+          <line x1="80" y1="110.6" x2="760" y2="110.6" stroke-dasharray="3 5"/>
+          <line x1="80" y1="72.7" x2="760" y2="72.7" stroke-dasharray="3 5"/>
+        </g>
+        <g fill="#5F6B80" font-size="11" text-anchor="end" font-family="Inter,sans-serif">
+          <text x="66" y="304">0</text>
+          <text x="66" y="266">1</text>
+          <text x="66" y="228">2</text>
+          <text x="66" y="190">3</text>
+          <text x="66" y="152">4</text>
+          <text x="66" y="114">5</text>
+          <text x="66" y="76">6</text>
+        </g>
+
+        <!-- 面积 -->
+        <path d="M80.0,292.0 C120.8,292.0 129.9,285.6 170.7,285.6 C211.5,285.6 220.5,274.2 261.3,274.2 C302.1,274.2 311.2,258.3 352.0,258.3 C372.4,258.3 376.9,249.6 397.3,249.6 C438.1,249.6 447.2,226.9 488.0,226.9 C549.2,226.9 562.8,169.7 624.0,169.7 C685.2,169.7 698.8,61.4 760.0,61.4 L760.0,300 L80.0,300 Z" fill="url(#areaG)"/>
+        <!-- 曲线 -->
+        <path d="M80.0,292.0 C120.8,292.0 129.9,285.6 170.7,285.6 C211.5,285.6 220.5,274.2 261.3,274.2 C302.1,274.2 311.2,258.3 352.0,258.3 C372.4,258.3 376.9,249.6 397.3,249.6 C438.1,249.6 447.2,226.9 488.0,226.9 C549.2,226.9 562.8,169.7 624.0,169.7 C685.2,169.7 698.8,61.4 760.0,61.4"
+              fill="none" stroke="url(#lineG)" stroke-width="2.6" stroke-linecap="round"/>
+
+        <!-- 关键节点 -->
+        <circle cx="352" cy="258.3" r="5" fill="#0A0E17" stroke="#22D3EE" stroke-width="2.5"/>
+        <text x="352" y="284" fill="#8B98AE" font-size="11.5" text-anchor="middle" font-family="Inter,sans-serif">2025 · 1.1</text>
+
+        <circle cx="760" cy="61.4" r="5.5" fill="#4A7BFF" stroke="#0A0E17" stroke-width="2"/>
+        <text x="752" y="48" fill="#E6EAF2" font-size="13" font-weight="700" text-anchor="end" font-family="Inter,sans-serif">6.3</text>
+
+        <!-- 预测标记 -->
+        <line x1="352" y1="40" x2="352" y2="300" stroke="#22D3EE" stroke-width="1" stroke-dasharray="2 4" opacity="0.45"/>
+        <text x="360" y="46" fill="#22D3EE" font-size="10.5" font-family="Inter,sans-serif" opacity="0.9">← 已发生　预测 →</text>
+
+        <!-- 轴标签 -->
+        <g fill="#5F6B80" font-size="11" font-family="Inter,sans-serif" text-anchor="middle">
+          <text x="80" y="322">2019</text>
+          <text x="261" y="322">2023</text>
+          <text x="352" y="322">2025</text>
+          <text x="488" y="322">2028</text>
+          <text x="624" y="322">2031</text>
+          <text x="760" y="322">2034</text>
+        </g>
+      </svg>
+      <div class="chart-src">
+        数据口径：MarketIntelo《Neuromorphic AI Chip Market 2025–2034》（2025 年 11 亿美元 → 2034 年 63 亿美元，CAGR 20.5%）。
+        注：同类报告口径差异较大（2025 年基准值区间 6.8 亿–35.6 亿美元），这本身说明市场仍处早期、统计标准尚未统一。
+        我们取中位口径，不取最高估值。
+      </div>
+    </div>
+
+    <div class="grid3">
+      <div class="card">
+        <h3>硬件已经到货</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          Loihi 3、AKD1500、Speck、Xylo 都能买了。芯片不再是瓶颈。
+        </p>
+      </div>
+      <div class="card">
+        <h3>开发者不会用</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          写着 "Python 友好" 的运行时库，实际要求你懂微分方程和硬件时序。
+        </p>
+      </div>
+      <div class="card">
+        <h3>所以芯片卖不动</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          硬件厂商最大的痛点不是性能，是<b style="color:var(--amber)">客户拿回去写不出代码</b>。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 2. 痛点 ================= -->
+<section id="gap">
+  <div class="wrap">
+    <div class="kicker">02 — 结构性缺口</div>
+    <h2>这个行业断在了中间那一层</h2>
+    <p class="lead">
+      神经形态的软件栈分三层。最下面（芯片指令格式）已经有统一标准 <strong>NIR</strong>，
+      2024 年发在 Nature Communications，Loihi、SpiNNaker2、Speck、Xylo 都读它。
+      最上面（写代码的库）有 snnTorch、SpikingJelly、Norse，都是成熟开源项目。
+      <em>唯独中间——把人的意图翻译成下面那层——是空的。</em>
+    </p>
+
+    <div class="chart-box">
+      <div class="chart-title">神经形态软件栈：现状</div>
+      <div class="chart-sub">绿色为已有成熟方案，红色为结构性缺口</div>
+      <svg viewBox="0 0 800 300" role="img" aria-label="三层软件栈的缺口">
+        <!-- 第三层 -->
+        <rect x="60" y="30" width="680" height="66" rx="10" fill="rgba(52,211,153,.07)" stroke="#34D399" stroke-width="1.4"/>
+        <text x="86" y="58" fill="#E6EAF2" font-size="15" font-weight="650" font-family="Inter,sans-serif">① 运行时库 · 人写 SNN 的地方</text>
+        <text x="86" y="80" fill="#8B98AE" font-size="12.5" font-family="Inter,sans-serif">snnTorch · SpikingJelly · Norse · Lava — 成熟、开源、有人用</text>
+        <text x="716" y="68" fill="#34D399" font-size="11.5" text-anchor="end" font-weight="650" font-family="Inter,sans-serif">已解决</text>
+
+        <!-- 缺口层 -->
+        <rect x="60" y="112" width="680" height="76" rx="10" fill="rgba(248,113,113,.08)" stroke="#F87171" stroke-width="1.8" stroke-dasharray="7 5"/>
+        <text x="86" y="142" fill="#F87171" font-size="15" font-weight="700" font-family="Inter,sans-serif">② 编译层 · 从「意图」到「静态图」— 这里是空的</text>
+        <text x="86" y="166" fill="#C4A0A0" font-size="12.5" font-family="Inter,sans-serif">谁来做语义检查？谁做图优化？谁在编译期算出能耗和内存预算？</text>
+        <text x="716" y="152" fill="#F87171" font-size="11.5" text-anchor="end" font-weight="700" font-family="Inter,sans-serif">← 我们的位置</text>
+
+        <!-- 第一层 -->
+        <rect x="60" y="204" width="680" height="66" rx="10" fill="rgba(52,211,153,.07)" stroke="#34D399" stroke-width="1.4"/>
+        <text x="86" y="232" fill="#E6EAF2" font-size="15" font-weight="650" font-family="Inter,sans-serif">③ 硬件中间表示 · 芯片读的东西</text>
+        <text x="86" y="254" fill="#8B98AE" font-size="12.5" font-family="Inter,sans-serif">NIR（Nature Comm. 2024）— 已成事实标准，四大硬件平台通用</text>
+        <text x="716" y="242" fill="#34D399" font-size="11.5" text-anchor="end" font-weight="650" font-family="Inter,sans-serif">已解决</text>
+
+        <!-- 断裂箭头 -->
+        <path d="M400 96 L400 112" stroke="#F87171" stroke-width="2"/>
+        <path d="M394 106 L400 113 L406 106" fill="none" stroke="#F87171" stroke-width="2"/>
+        <path d="M400 188 L400 204" stroke="#F87171" stroke-width="2"/>
+        <path d="M394 198 L400 205 L406 198" fill="none" stroke="#F87171" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <h3 style="margin-top:44px">这不是我们的判断，是行业报告的共识</h3>
+    <div class="quote">
+      「市场受制于<strong>不成熟的软件工具</strong>、开发者认知有限、编程模型碎片化。
+      商业成功取决于完整的参考平台与开发者工具，<strong>而不只是硅本身的能力</strong>。」
+      <cite>— Intel Market Research，《Neuromorphic Chip Market 2026–2034》</cite>
+    </div>
+    <div class="quote" style="border-color:var(--red);background:rgba(248,113,113,.05)">
+      「当前开发工具<strong>落后于常规 AI 框架</strong>，限制了开发者采用，并拖慢了研究原型到商业产品的转化。」
+      <cite>— Semiconductor Insight，《Neuromorphic Chip Market》</cite>
+    </div>
+    <p class="lead" style="margin-top:26px">
+      两份互不相关的市场报告，独立地把同一件事写进了「市场制约」这一栏。
+      这种一致性在早期赛道里很罕见，它说明瓶颈是结构性的，不是某家公司做得不够好。
+      <strong>结构性瓶颈，就是可投资的位置。</strong>
+    </p>
+
+    <!-- 时间线：硬件先跑到了 -->
+    <div class="card" style="margin-top:44px">
+      <h3 style="margin-bottom:6px">时序上的巧合：硬件刚刚跑到了，软件还留在原地</h3>
+      <div class="tl">
+        <div class="ev done">
+          <div class="d">2025.07</div>
+          <div class="t">Intel 发布 Loihi 3</div>
+          <div class="s">学术生态继续扩张，但仍未定位为大众市场商用处理器</div>
+        </div>
+        <div class="ev done">
+          <div class="d">2026.04</div>
+          <div class="t">Unconventional AI 获 4.75 亿美元种子轮</div>
+          <div class="s">神经形态史上最大种子轮，资本已跨过可信度门槛</div>
+        </div>
+        <div class="ev done">
+          <div class="d">2026.06</div>
+          <div class="t">BrainChip AKD1500 量产出货，7 月推出 M.2 模组</div>
+          <div class="s">第一批可批量采购的商用神经形态芯片</div>
+        </div>
+        <div class="ev">
+          <div class="d">现在</div>
+          <div class="t" style="color:var(--amber);font-weight:600">客户拿到芯片，发现没有好用的编程方式</div>
+          <div class="s">窗口期：硬件出货量上升，而工具链的占位者还没确定</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 3. 我们做了什么 ================= -->
+<section id="build">
+  <div class="wrap">
+    <div class="kicker">03 — 我们做了什么</div>
+    <h2>一份描述，三处产出——而且已经跑通了</h2>
+    <p class="lead">
+      开发者写一段声明式的网络描述（或直接用 Python），编译器把它变成一个<strong>静态的中间表示</strong>，
+      然后同时产出三样东西：可训练的 PyTorch 代码、可导出的硬件指令（NIR）、以及编译期算出来的成本账单。
+      下面的数字全部来自实测，不是估算。
+    </p>
+
+    <div class="chart-box">
+      <div class="chart-title">实测收益（对比不启用该优化）</div>
+      <div class="chart-sub">条形长度 = 资源消耗降幅百分比，越长越好；右侧标注等效倍数</div>
+      <svg viewBox="0 0 800 356" role="img" aria-label="实测收益条形图">
+        <g stroke="#1F2A3D" stroke-width="1">
+          <line x1="250" y1="10" x2="250" y2="330"/>
+          <line x1="475" y1="10" x2="475" y2="330" stroke-dasharray="3 5" opacity="0.6"/>
+          <line x1="700" y1="10" x2="700" y2="330" stroke-dasharray="3 5" opacity="0.6"/>
+        </g>
+        <g fill="#5F6B80" font-size="10.5" font-family="Inter,sans-serif" text-anchor="middle">
+          <text x="250" y="345">0%</text>
+          <text x="475" y="345">50%</text>
+          <text x="700" y="345">100%</text>
+        </g>
+        <g font-family="Inter,sans-serif">
+          <!-- 行 1 -->
+          <text x="0" y="34" fill="#E6EAF2" font-size="13.5">模型体积（int8 量化）</text>
+          <text x="0" y="52" fill="#5F6B80" font-size="11.5">795 KiB → 203.6 KiB · 精度仅 −0.02pp</text>
+          <rect x="250" y="24" width="450" height="26" rx="5" fill="#1F2A3D"/>
+          <rect x="250" y="24" width="335" height="26" rx="5" fill="url(#lineG)"/>
+          <text x="593" y="42" fill="#22D3EE" font-size="12.5" font-weight="750" text-anchor="start" dx="9">−74.4%  3.9×</text>
+
+          <!-- 行 2 -->
+          <text x="0" y="96" fill="#E6EAF2" font-size="13.5">生成代码量（时间步调度）</text>
+          <text x="0" y="114" fill="#5F6B80" font-size="11.5">T=8 时 32 层展开 → 4 层循环</text>
+          <rect x="250" y="86" width="450" height="26" rx="5" fill="#1F2A3D"/>
+          <rect x="250" y="86" width="394" height="26" rx="5" fill="url(#lineG)"/>
+          <text x="652" y="104" fill="#22D3EE" font-size="12.5" font-weight="750" text-anchor="start" dx="9">−87.5%  8.0×</text>
+
+          <!-- 行 3 -->
+          <text x="0" y="158" fill="#E6EAF2" font-size="13.5">推理延迟（torch.compile）</text>
+          <text x="0" y="176" fill="#5F6B80" font-size="11.5">25.25 → 8.56 ms/batch</text>
+          <rect x="250" y="148" width="450" height="26" rx="5" fill="#1F2A3D"/>
+          <rect x="250" y="148" width="297" height="26" rx="5" fill="url(#lineG)"/>
+          <text x="555" y="166" fill="#22D3EE" font-size="12.5" font-weight="750" text-anchor="start" dx="9">−66.1%  2.95×</text>
+
+          <!-- 行 4 -->
+          <text x="0" y="220" fill="#E6EAF2" font-size="13.5">内存占用（CIFAR 网络）</text>
+          <text x="0" y="238" fill="#5F6B80" font-size="11.5">编译期 buffer 复用（MNIST −25.3%）</text>
+          <rect x="250" y="210" width="450" height="26" rx="5" fill="#1F2A3D"/>
+          <rect x="250" y="210" width="230" height="26" rx="5" fill="url(#lineG)"/>
+          <text x="488" y="228" fill="#22D3EE" font-size="12.5" font-weight="750" text-anchor="start" dx="9">−51%</text>
+
+          <!-- 行 5 能耗 -->
+          <text x="0" y="282" fill="#FB923C" font-size="13.5" font-weight="600">能耗（事件驱动推理）</text>
+          <text x="0" y="300" fill="#5F6B80" font-size="11.5">当前网络结构下几乎没有改善</text>
+          <rect x="250" y="272" width="450" height="26" rx="5" fill="#1F2A3D"/>
+          <rect x="250" y="272" width="7" height="26" rx="3.5" fill="#FB923C"/>
+          <text x="269" y="290" fill="#FB923C" font-size="12.5" font-weight="750" text-anchor="start">−1%　这一条最关键，见下方</text>
+        </g>
+      </svg>
+      <div class="chart-src">
+        来源：本项目实测。MNIST 全量 10000 张测试集，精度 97.21%（4 epoch，96 秒训练）。
+        int8 为 weight-only 伪量化，精度损失 −0.02 个百分点。能耗为分析模型估算，非真机测量。
+      </div>
+    </div>
+
+    <div class="card" style="border-color:rgba(251,146,60,.35);background:rgba(251,146,60,.05)">
+      <h3 style="color:var(--orange)">为什么把「只有 1.01×」这条摆出来</h3>
+      <p style="font-size:15px;color:#D9DFEA;margin-bottom:12px">
+        神经形态芯片的宣传语是「省电 100 倍」。我们实测自己这个网络，只省了 1%。
+        因为编译器顺手把 MAC 运算量按层拆开算了：<strong>第一层 784→256 占了全部运算量的 98.7%</strong>，
+        而这一层吃的是模拟输入电流，根本不是脉冲，事件驱动的红利在这一层完全无效。
+      </p>
+      <p style="font-size:15px;color:#D9DFEA;margin:0">
+        <strong>这个结论本身就是产品价值。</strong>今天任何人想知道「我的网络放到神经形态芯片上到底省不省电」，
+        唯一的办法是买芯片、烧进去、测。我们在编译阶段就给出答案，而且指出瓶颈在哪、
+        需要把第一层发放率压到多少才有意义（实测：13% → 38.6×，5% → 95.8×）。
+        这直接决定客户该不该做这个项目——<em>省下的是整个选型周期的成本</em>。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 4. 竞争定位 ================= -->
+<section id="position">
+  <div class="wrap">
+    <div class="kicker">04 — 竞争定位</div>
+    <h2>没人占这个格子</h2>
+    <p class="lead">
+      把所有玩家放到两个轴上：<strong>横轴是「人写起来有多容易」，纵轴是「能对接多少种硬件」</strong>。
+      运行时库好写但只能跑 GPU；硬件工具链能上芯片但极难写；NIR 覆盖硬件但不面向人。
+      右上角那个格子——好写、又多硬件可达——是空的。
+    </p>
+
+    <div class="chart-box">
+      <div class="chart-title">竞争格局</div>
+      <div class="chart-sub">右上象限：开发者友好 + 多硬件可达</div>
+      <svg viewBox="0 0 800 460" role="img" aria-label="竞争格局二维矩阵">
+        <!-- 象限底色 -->
+        <rect x="90" y="40" width="660" height="360" fill="#0D1320" stroke="#1F2A3D"/>
+        <rect x="420" y="40" width="330" height="180" fill="rgba(34,211,238,.07)" stroke="#22D3EE" stroke-width="1.4" stroke-dasharray="6 5"/>
+
+        <!-- 中线 -->
+        <line x1="420" y1="40" x2="420" y2="400" stroke="#1F2A3D" stroke-width="1" stroke-dasharray="4 6"/>
+        <line x1="90" y1="220" x2="750" y2="220" stroke="#1F2A3D" stroke-width="1" stroke-dasharray="4 6"/>
+
+        <!-- 轴标签 -->
+        <text x="420" y="428" fill="#8B98AE" font-size="13" text-anchor="middle" font-family="Inter,sans-serif">开发者友好度（人写起来有多容易）→</text>
+        <text x="42" y="220" fill="#8B98AE" font-size="13" text-anchor="middle" font-family="Inter,sans-serif" transform="rotate(-90 42 220)">多硬件可达性 →</text>
+
+        <text x="105" y="62" fill="#5F6B80" font-size="11" font-family="Inter,sans-serif">易写 · 单硬件</text>
+        <text x="735" y="62" fill="#22D3EE" font-size="11" text-anchor="end" font-family="Inter,sans-serif">易写 · 多硬件 ← 空位</text>
+        <text x="105" y="392" fill="#5F6B80" font-size="11" font-family="Inter,sans-serif">难写 · 单硬件</text>
+        <text x="735" y="392" fill="#5F6B80" font-size="11" text-anchor="end" font-family="Inter,sans-serif">难写 · 多硬件</text>
+
+        <!-- 玩家分布 -->
+        <g font-family="Inter,sans-serif">
+          <!-- snnTorch 等：易写 单硬件 -->
+          <circle cx="250" cy="122" r="8" fill="#334155" stroke="#64748B" stroke-width="1.5"/>
+          <text x="250" y="100" fill="#94A3B8" font-size="12.5" text-anchor="middle">snnTorch / SpikingJelly / Norse</text>
+          <text x="250" y="148" fill="#5F6B80" font-size="11" text-anchor="middle">好写，但产出的是 GPU 上的动态图</text>
+
+          <!-- 厂商工具链：难写 单硬件 -->
+          <circle cx="235" cy="322" r="8" fill="#334155" stroke="#64748B" stroke-width="1.5"/>
+          <text x="235" y="300" fill="#94A3B8" font-size="12.5" text-anchor="middle">Loihi 的 Lava / 各家 SDK</text>
+          <text x="235" y="348" fill="#5F6B80" font-size="11" text-anchor="middle">能上芯片，但绑定单一硬件</text>
+
+          <!-- NIR：难写 多硬件 -->
+          <circle cx="612" cy="322" r="8" fill="#334155" stroke="#64748B" stroke-width="1.5"/>
+          <text x="612" y="300" fill="#94A3B8" font-size="12.5" text-anchor="middle">NIR</text>
+          <text x="612" y="348" fill="#5F6B80" font-size="11" text-anchor="middle">多硬件，但它是给编译器看的</text>
+
+          <!-- 我们 -->
+          <circle cx="612" cy="128" r="13" fill="rgba(34,211,238,.18)" stroke="#22D3EE" stroke-width="2.4"/>
+          <circle cx="612" cy="128" r="4.5" fill="#22D3EE"/>
+          <text x="612" y="104" fill="#22D3EE" font-size="14" font-weight="750" text-anchor="middle">snndsl</text>
+          <text x="612" y="156" fill="#8B98AE" font-size="11" text-anchor="middle">文本 + Python 双前端，产出 NIR</text>
+        </g>
+      </svg>
+    </div>
+
+    <p class="lead">
+      这张图上的空白格不是我们画出来的，是结构决定的：做运行时库的团队<strong>没有动力</strong>去碰硬件导出
+      （那要处理各家芯片的时序细节）；做硬件的公司<strong>没有动力</strong>去做跨硬件的中立编译器
+      （那等于帮竞争对手降门槛）。这个格子只能由第三方来占。
+    </p>
+  </div>
+</section>
+
+<!-- ================= 5. 护城河 ================= -->
+<section id="moat">
+  <div class="wrap">
+    <div class="kicker">05 — 护城河</div>
+    <h2>壁垒不在代码行数，在「谁定义这门语言」</h2>
+    <p class="lead">
+      编译器生意的护城河从来不是实现难度，是<strong>一旦被接受就很难换掉</strong>。
+      CUDA 的壁垒不是它的性能，是十年积累的代码和习惯。这类资产有三个特征，我们三个都在建。
+    </p>
+
+    <div class="grid3" style="margin-top:34px">
+      <div class="card">
+        <div class="pill p-ok">壁垒一</div>
+        <h3 style="margin-top:14px">语义层的定义权</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          SNN 比普通神经网络多了<strong style="color:var(--txt)">一整个时间维度</strong>。
+          「8 个时间步怎么展开」「神经元的状态在一个 batch 里怎么隔离」——这些语义一旦成为开发者
+          的习惯写法，迁移成本极高。这是最难抽象、也最值钱的部分。
+        </p>
+      </div>
+      <div class="card">
+        <div class="pill p-ok">壁垒二</div>
+        <h3 style="margin-top:14px">编译期的成本模型</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          因为图是<strong style="color:var(--txt)">静态</strong>的，才能在训练之前算清内存、能耗、脉冲预算。
+          这个能力需要长期积累各家硬件的成本参数，是<strong style="color:var(--txt)">数据资产</strong>，
+          不是纯代码，抄不快。
+        </p>
+      </div>
+      <div class="card">
+        <div class="pill p-ok">壁垒三</div>
+        <h3 style="margin-top:14px">与硬件厂商是正和</h3>
+        <p style="font-size:14.5px;color:var(--dim);margin:0">
+          我们不造芯片，我们<strong style="color:var(--txt)">帮芯片卖出去</strong>。
+          每多一家硬件接入，我们的价值涨一分，且不抢任何人的生意。
+          这是最难被巨头扼杀的位置。
+        </p>
+      </div>
+    </div>
+
+    <table style="margin-top:40px">
+      <thead>
+        <tr><th style="width:28%">已经被验证的事实</th><th>证据强度</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>双前端产出一致</strong></td>
+          <td>文本 DSL 与 Python 前端编译出同一份 IR：算子序列一致、参数量 203,530 完全相等、MAC 1,626,112 完全相等。
+            <span class="pill p-ok">可复现</span></td>
+        </tr>
+        <tr>
+          <td><strong>权重跨前端互通</strong></td>
+          <td>用文本 DSL 训练出的权重，直接加载进 Python 前端编译的模块，全量测试集同样 97.21%。
+            <span class="pill p-ok">可复现</span></td>
+        </tr>
+        <tr>
+          <td><strong>能导出硬件指令</strong></td>
+          <td>已导出符合 NIR 规范的图（含权重），能被 NIR 工具链读回。
+            <span class="pill p-now">未做真机验证</span></td>
+        </tr>
+        <tr>
+          <td><strong>编译期优化真的省资源</strong></td>
+          <td>内存 −25% 至 −51%（依网络结构），代码量 −87%，全部为实测。
+            <span class="pill p-ok">可复现</span></td>
+        </tr>
+        <tr>
+          <td><strong>部署后行为不变（已可验证）</strong></td>
+          <td>自建 NIR 参考解释器，按规范独立实现；1024 张真实测试集上，
+            训练实现与硬件语义实现的<strong>预测一致率 100%</strong>（精度均为 94.34%）。
+            <span class="pill p-ok">可复现</span></td>
+        </tr>
+        <tr>
+          <td><strong>错误能被拦住</strong></td>
+          <td>30 个自动化测试；「没有脉冲神经元」「缺时间语义」「循环连接」等易错写法会在编译期报错并给出修复建议，
+            而不是静默编译成一个错的网络。
+            <span class="pill p-ok">可复现</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 6. 商业模式 ================= -->
+<section id="biz">
+  <div class="wrap">
+    <div class="kicker">06 — 商业模式</div>
+    <h2>开源占位，商业版收「上生产」的钱</h2>
+    <p class="lead">
+      编译器这个品类有成熟的商业路径，参照 LLVM：核心开源、被所有人用、靠企业和硬件厂商的
+      商业授权赚钱。ARM、Apple、Intel 都在资助 LLVM——因为<strong>它们需要这门语言存在</strong>。
+    </p>
+
+    <table>
+      <thead>
+        <tr><th style="width:24%">收入来源</th><th style="width:30%">谁付钱</th><th>为什么付</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>硬件厂商 OEM</strong><br><span class="pill p-next">主攻</span></td>
+          <td>神经形态芯片公司</td>
+          <td>它们的客户拿到芯片写不出代码。我们做它们的「官方推荐工具链」，
+            等于替它们降低销售摩擦。这是一笔算得清 ROI 的采购。</td>
+        </tr>
+        <tr>
+          <td><strong>企业版工具链</strong><br><span class="pill p-next">次攻</span></td>
+          <td>做边缘 AI 的产品公司</td>
+          <td>需要静态分析、成本预算、CI 集成、私有部署、技术支持。
+            开源版给个人，企业版给团队。</td>
+        </tr>
+        <tr>
+          <td><strong>云编译 / 成本评估服务</strong><br><span class="pill p-next">长线</span></td>
+          <td>选型阶段的客户</td>
+          <td>「我的模型放到哪种芯片上最省电、能不能跑」——按次收费的评估报告。
+            这是获客入口，也是数据飞轮的来源。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="card" style="margin-top:30px">
+      <h3>为什么先开源</h3>
+      <p style="font-size:15px;color:var(--dim);margin:0">
+        编译器是<strong>网络效应</strong>生意：用的人越多，语义越稳定，硬件越愿意适配，用的人更多。
+        闭源起不来。开源核心换的是「开发者习惯」这个真正的资产，
+        而收入来自那些<em>不能只靠开源</em>的场景——厂商集成、合规、SLA、私有部署。
+        这条路 LLVM、PyTorch、Hugging Face 都走过，不是新发明。
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 7. 阶段与风险 ================= -->
+<section id="risk">
+  <div class="wrap">
+    <div class="kicker">07 — 老实说</div>
+    <h2>现在是原型，不是公司</h2>
+    <p class="lead">
+      对投资人最有用的信息往往是最不好看的那部分。下面这张表是我们真实的进度和真实的风险。
+    </p>
+
+    <table style="margin-top:8px">
+      <thead><tr><th style="width:32%">已经完成</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr><td>编译器全链路（前端 → IR → 优化 → 代码生成）</td><td><span class="pill p-ok">可运行</span> 30 个测试通过</td></tr>
+        <tr><td>训练与推理闭环，MNIST 97.21%</td><td><span class="pill p-ok">可复现</span> 全量测试集</td></tr>
+        <tr><td>NIR 硬件导出</td><td><span class="pill p-now">部分验证</span> 能导出、能被读回，未上真机</td></tr>
+        <tr><td>量化与部署（int8 伪量化、推理封装）</td><td><span class="pill p-now">部分验证</span> 无量化 kernel</td></tr>
+        <tr><td>客户 / 收入 / 团队</td><td><span class="pill p-risk">尚未开始</span></td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin-top:46px">四个真实风险，和对冲方式</h3>
+    <table>
+      <thead><tr><th style="width:30%">风险</th><th style="width:14%">严重度</th><th>我们的看法</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>硬件未真机验证</strong></td>
+          <td><span class="pill p-risk">最高</span></td>
+          <td><strong>进展</strong>：已建立独立的 NIR 参考解释器，证明导出的网络在规范语义下与训练实现
+            逐位一致（真实测试集预测一致率 100%）。<strong>剩余缺口</strong>：这不等于在某颗具体芯片上一致，
+            后者还取决于目标编译器的实现质量。<br>
+            对冲：NIR 是公开标准、有开源仿真器与可采购芯片，真机验证是可规划、可预算的工程任务。
+            <strong>这是本轮融资的首要用途。</strong></td>
+        </tr>
+        <tr>
+          <td><strong>芯片市场本身还小</strong></td>
+          <td><span class="pill p-risk">高</span></td>
+          <td>2025 年基准值 7 亿至 36 亿美元之间（各机构口径差异极大）。今天这个市场养不起一家大公司。
+            对冲：我们卖的是<em>跨硬件</em>的层，硬件种类越多越值钱，不赌单一硬件赢。
+            且工具链可以先服务「用 GPU 模拟 SNN」的更大群体，硬件成熟后再收割。</td>
+        </tr>
+        <tr>
+          <td><strong>巨头可能免费送</strong></td>
+          <td><span class="pill p-now">中</span></td>
+          <td>Intel、NVIDIA 有能力把编译器当赠品。但历史上它们只为自己硬件做工具
+            （CUDA 只跑 NVIDIA 卡）。跨硬件的中立层，巨头做等于自毁护城河——
+            这正是第三方公司能存在的原因。</td>
+        </tr>
+        <tr>
+          <td><strong>客户决策慢</strong></td>
+          <td><span class="pill p-now">中</span></td>
+          <td>半导体、国防、工业客户的采购周期长。对冲：开源 + 自助工具先获客，
+            把销售周期转化为社区增长，商业合同滞后兑现。</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= 8. 投资论点 ================= -->
+<section id="thesis" style="background:linear-gradient(180deg,rgba(34,211,238,.04),transparent 60%)">
+  <div class="wrap">
+    <div class="kicker">08 — 投资论点</div>
+    <h2>三句话</h2>
+
+    <div class="thesis">
+      <div class="item"><p>
+        <strong>这是一次「标准占位」的机会，不是一次「技术领先」的机会。</strong>
+        神经形态硬件刚量产，编程方式还没定型。谁先成为开发者默认的写法，谁就拿走这个品类最长的那段坡。
+        窗口现在开着，而且不会开很久。
+      </p></div>
+      <div class="item"><p>
+        <strong>最难的假设已经被验证了，剩下的都是工程。</strong>
+        最危险的问题是「一份描述能否同时产出可训练代码和硬件指令」——
+        这件事已经有可运行的证据：双前端同 IR、权重互通、97.21% 精度、NIR 能导出。
+        剩下的是真机验证、性能打磨、生态建设，都是可预算的工作，不是信仰。
+      </p></div>
+      <div class="item"><p>
+        <strong>它站在所有硬件厂商那一边，所以不会被任何一家掐死。</strong>
+        每多一家芯片接入，我们更值钱；每一次硬件出货，我们的潜在客户更多。
+        在一个「硬件已到货、软件还没到」的市场里，这是最好的站位。
+      </p></div>
+    </div>
+
+    <div class="card" style="margin-top:36px;border-color:rgba(34,211,238,.3)">
+      <h3 style="color:var(--cyan)">如果我们只让你们记住一个数字</h3>
+      <p style="font-size:16px;color:#D9DFEA;margin:0">
+        多份互不相关的行业报告，独立地把「软件工具链不成熟」写进了市场制约。
+        <strong>在一个所有人都在等软件的市场里，做软件的那个人，位置是最好的。</strong>
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="footer">
+  <div class="wrap">
+    <strong style="color:var(--dim)">资料来源</strong><br>
+    市场数据：MarketIntelo《Neuromorphic AI Chip Market Research Report 2034》；
+    Intel Market Research《Neuromorphic Chip Market 2026–2034》；
+    Semiconductor Insight《Neuromorphic Chip Market》与《Neuromorphic Computing Hardware Market》。
+    不同机构统计口径差异显著，本文取中位口径并标注区间。<br>
+    技术指标：本项目实测，MNIST 全量 10000 张测试集；30 个自动化测试。
+    能耗数据为分析模型估算，非真机测量。<br>
+    <br>
+    本材料为技术价值说明，不构成投资建议或收益承诺。所有未验证项已明确标注。
+  </div>
+</div>
+
+<script>
+  var bar = document.getElementById('progress');
+  function upd(){
+    var h = document.documentElement;
+    var pct = h.scrollTop / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+  }
+  document.addEventListener('scroll', upd, {passive:true});
+  upd();
+</script>
+</body>
+</html>

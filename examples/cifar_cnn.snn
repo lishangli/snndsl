@@ -1,0 +1,64 @@
+# =============================================================================
+# CIFAR-10 convolutional SNN
+#   demonstrates: conv / max-pool / flatten, per-layer weight scaling,
+#                 surrogate choice, kernel-level energy accounting
+#   snndsl run examples/cifar_cnn.snn --epochs 5
+# =============================================================================
+program cifar_cnn
+
+const T_STEPS = 6
+const W_SCALE = 1.6
+
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = subtract
+
+# LIF with a slightly longer membrane time constant for deeper stacks
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = atan(alpha=2.0)
+
+encoder rate:
+    gain = 1.0
+
+pipeline:
+    input  x  : 3, 32, 32
+    encode x  -> rate with gain=3.0
+    conv   c1 : 32 <- x   with k=3, p=1, scale=W_SCALE
+    neuron c1 -> LIF
+    pool   p1 : 2 <- c1   with kind=max
+    conv   c2 : 64 <- p1  with k=3, p=1, scale=W_SCALE
+    neuron c2 -> LIF
+    pool   p2 : 2 <- c2   with kind=max
+    conv   c3 : 128 <- p2 with k=3, p=1, scale=W_SCALE
+    neuron c3 -> LIF
+    flatten f  <- c3
+    dense  h  : 256 <- f  with scale=W_SCALE
+    neuron h  -> LIF
+    dense  y  : 10 <- h   with scale=W_SCALE
+    neuron y  -> LIF
+    output out <- y
+
+train:
+    data = cifar10
+    epochs = 5
+    batch = 128
+    lr = 0.0008
+    opt = adamw
+    weight_decay = 0.00002
+    loss = ce
+    sched = cosine
+    label_smooth = 0.05
+
+infer:
+    mode = event
+    quant = int8
+
+budget:
+    spikes_per_sample = 250000

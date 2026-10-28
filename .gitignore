@@ -1,0 +1,13 @@
+# 构建产物（`snndsl build` 生成）
+build/
+build_*/
+
+# 数据集
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/

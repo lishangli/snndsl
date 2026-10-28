@@ -1,0 +1,68 @@
+# =============================================================================
+# Adaptive-threshold LIF (ALIF) -- shows that the DSL is not hard-wired to LIF.
+# Two state variables, a spike-dependent threshold, and a custom surrogate.
+#   snndsl run examples/adaptive_lif.snn --epochs 3
+# =============================================================================
+program adaptive_lif
+
+const T_STEPS = 10
+const W_SCALE = 1.8
+
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = subtract
+
+# v   : membrane potential
+# a   : slow adaptation variable that raises the threshold after each spike
+# 'i' : synaptic input current, injected by the compiler from the previous layer
+neuron ALIF:
+    param tau = 2.0
+    param tau_a = 8.0
+    param v_th = 1.0
+    param beta = 0.25
+    state v = 0.0
+    state a = 0.0
+    v = v * (1 - dt / tau) + i
+    a = a * (1 - dt / tau_a)
+    spike s = v > v_th + beta * a
+    v = v - s * v_th
+    a = a + s
+    surrogate = atan(alpha=2.0)
+
+# A second model in the same program: plain LIF for the readout layer
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = fast_sigmoid(alpha=4.0)
+
+encoder poisson:
+    gain = 1.0
+
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> poisson with gain=1.0
+    dense  h1 : 192 <- x  with scale=W_SCALE
+    neuron h1 -> ALIF
+    dense  h2 : 192 <- h1 with scale=W_SCALE
+    neuron h2 -> ALIF
+    dense  y  : 10 <- h2  with scale=W_SCALE
+    neuron y  -> LIF
+    output out <- y
+
+train:
+    data = mnist
+    epochs = 3
+    batch = 128
+    lr = 0.001
+    opt = adam
+    loss = ce
+    reg = spike_l2(0.00002)
+    sched = cosine
+
+budget:
+    spikes_per_sample = 60000

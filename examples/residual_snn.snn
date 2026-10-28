@@ -1,0 +1,51 @@
+# =============================================================================
+# Residual SNN -- exercises DAG construction, the merge ops, and shows what the
+# memory planner and the direct-input pass do on a branched graph.
+#   snndsl build examples/residual_snn.snn --passes direct_input
+# =============================================================================
+program residual_snn
+
+const T_STEPS = 6
+const W = 256
+
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = subtract
+
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+    surrogate = fast_sigmoid(alpha=4.0)
+
+encoder rate:
+    gain = 1.0
+
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=1.0
+    dense  stem : W <- x with scale=2.0
+    neuron stem -> LIF
+    # residual branch: identity spike path + a learned residual path
+    dense  res  : W <- stem with scale=1.0
+    neuron res  -> LIF
+    add    skip : stem, res
+    neuron skip -> LIF
+    dense  y    : 10 <- skip with scale=2.0
+    neuron y    -> LIF
+    output out  <- y
+
+train:
+    data = mnist
+    epochs = 3
+    batch = 128
+    lr = 0.001
+    opt = adam
+    loss = ce
+
+budget:
+    spikes_per_sample = 50000

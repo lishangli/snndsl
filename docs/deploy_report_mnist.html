@@ -1,0 +1,51 @@
+<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>部署评估 · mnist_hw</title><style>
+:root{--ink:#12161c;--muted:#5c6b7a;--line:#e2e8f0;--bg:#fff;--soft:#f7f9fc;
+--ok:#0b7a4b;--okbg:#e7f6ee;--warn:#8a5a00;--warnbg:#fdf3e0;--bad:#a5202b;--badbg:#fdeaec;
+--accent:#1f5fa9;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--soft);color:var(--ink);
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 24px 72px}
+h1{font-size:27px;margin:0 0 6px;letter-spacing:-.01em}
+h2{font-size:19px;margin:38px 0 12px;padding-bottom:7px;border-bottom:2px solid var(--line)}
+h3{font-size:15px;margin:22px 0 8px}
+.sub{color:var(--muted);font-size:13px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+pre{background:#0f1720;color:#d6e2ee;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:12.5px;line-height:1.55}
+code{background:#eef2f7;padding:1px 5px;border-radius:4px;font-size:.92em}
+pre code{background:none;padding:0;color:inherit}
+.verdict{display:flex;align-items:center;gap:16px;padding:20px 22px;border-radius:10px;margin:18px 0 4px;border:1px solid}
+.verdict.ok{background:var(--okbg);border-color:#bde5cf}
+.verdict.bad{background:var(--badbg);border-color:#f3c3c8}
+.verdict .tag{font-size:12px;letter-spacing:.10em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+.verdict .big{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.verdict.ok .big{color:var(--ok)}.verdict.bad .big{color:var(--bad)}
+.verdict p{margin:4px 0 0;font-size:14px;color:var(--ink)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin:20px 0}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
+.card .k{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.card .v{font-size:24px;font-weight:700;margin:5px 0 1px;letter-spacing:-.02em}
+.card .u{font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;background:var(--bg);border:1px solid var(--line);
+border-radius:9px;overflow:hidden;font-size:13.5px;margin:12px 0}
+th{background:#eef2f8;text-align:left;padding:9px 12px;font-size:11.5px;letter-spacing:.06em;
+text-transform:uppercase;color:#42556b;border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid #f0f4f9;vertical-align:top}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill.blocker{background:var(--badbg);color:var(--bad)}
+.pill.warning{background:var(--warnbg);color:var(--warn)}
+.pill.info{background:#eaf1fa;color:var(--accent)}
+.pill.ok{background:var(--okbg);color:var(--ok)}
+.pill.gap{background:var(--badbg);color:var(--bad)}
+.pill.lo{background:var(--warnbg);color:var(--warn)}
+.fix{color:var(--muted);font-size:12.5px}
+.note{border-left:3px solid var(--accent);background:#fff;padding:12px 16px;border-radius:0 8px 8px 0;
+margin:14px 0;font-size:13.5px;border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.note.warn{border-left-color:#c07a00}
+.note.bad{border-left-color:var(--bad)}
+.note b{font-weight:650}
+ul{margin:8px 0 8px 20px;padding:0}li{margin:4px 0;font-size:13.5px}
+.small{font-size:12.5px;color:var(--muted)}
+footer{margin-top:44px;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+</style></head><body><div class='wrap'><h1>mnist_hw</h1><div class='sub'>mnist_hw.snn · T=8 · dt=1.0 · readout=spikes · 生成于 2026-10-29 02:09 · 耗时 10.7s</div><div class='verdict ok'><div><div class='tag'>结论</div><div class='big'>DEPLOYABLE</div><p>静态检查无阻断项，且导出的文件在独立参考解释器下与训练模型逐位一致。</p></div></div><div class='cards'><div class='card'><div class='k'>参数量</div><div class='v'>203,530</div><div class='u'>trainable</div></div><div class='card'><div class='k'>权重</div><div class='v'>已训练</div><div class='u'>mnist_hw.pt</div></div><div class='card'><div class='k'>最大输出误差</div><div class='v'>0.0</div><div class='u'>torch vs 参考解释器</div></div><div class='card'><div class='k'>top-1 一致率</div><div class='v'>100.0%</div><div class='u'>同一输入</div></div><div class='card'><div class='k'>脉冲/样本</div><div class='v'>699</div><div class='u'>T=8</div></div><div class='card'><div class='k'>能耗 vs ANN</div><div class='v'>1.01×</div><div class='u'>越低越好</div></div><div class='card'><div class='k'>后端数值一致</div><div class='v'>1/4</div><div class='u'>非本项目实现</div></div></div><h2>1 · 能不能部署（静态检查）</h2><table><tr><th style='width:88px'>级别</th><th style='width:150px'>位置</th><th>问题</th><th style='width:34%'>建议</th></tr><tr><td><span class='pill info'>提示</span></td><td><code>x$1</code></td><td>encode has no NIR equivalent and is dropped; the target receives raw currents instead</td><td class='fix'>feed analog currents (rate) or an event sensor stream (event) on the target side</td></tr><tr><td><span class='pill info'>提示</span></td><td><code>h1$1</code></td><td>zero reset maps exactly onto NIR&#x27;s v_reset</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>h1$1</code></td><td>input current is scaled by r=2 in NIR terms (tau/dt); the exporter carries this factor so behaviour is preserved</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>h1$1</code></td><td>LIF maps to NIR LIF (tau=2, v_th=1)</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>y$1</code></td><td>zero reset maps exactly onto NIR&#x27;s v_reset</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>y$1</code></td><td>input current is scaled by r=2 in NIR terms (tau/dt); the exporter carries this factor so behaviour is preserved</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>y$1</code></td><td>LIF maps to NIR LIF (tau=2, v_th=1)</td><td class='fix'></td></tr><tr><td><span class='pill info'>提示</span></td><td><code>out</code></td><td>spike readout maps 1:1 onto a NIR spiking layer</td><td class='fix'></td></tr></table><h2>2 · 数值等价（这份文件到底跑出了什么）</h2><div class='note '><b>一致</b>：验证的是写到磁盘上的 <code>deploy.nir</code>，不是内存里的图（来源：<code>file</code>）。最大绝对误差 <code>0</code>，相对误差 <code>0</code>，top-1 一致率 <code>100.00%</code>。</div><h3>逐层脉冲率</h3><svg width='62' height='34' role='img' aria-label='per-layer spike rates'><rect x='0.0' y='4.0' width='28.0' height='30.0' rx='1.5' fill='#1f5fa9' opacity='1.00'/><rect x='31.0' y='24.4' width='28.0' height='9.6' rx='1.5' fill='#1f5fa9' opacity='0.63'/></svg><table><tr><th>层</th><th style='width:120px'>平均脉冲率</th><th style='width:170px'>相对第一层</th></tr><tr><td><code>h1$1</code></td><td>0.3371</td><td>100.0%</td></tr><tr><td><code>y$1</code></td><td>0.1080</td><td>32.0%</td></tr></table><h2>3 · 别人的工具链能不能读这份文件</h2><div class='note'>这一节问的不是“文件合不合规范”，而是<b>“拿它去喂别的框架，会不会当场炸”</b>。两者经常不一致：规范改了字段名，厂商前端没跟。所有探测都在独立进程里跑，因为它们的 <code>nir</code> 版本和我们的不一样——装在一起会把我们正在测的版本降级。</div><table><tr><th>后端</th><th style='width:90px'>厂商</th><th style='width:110px'>结果</th><th>细节</th></tr><tr><td>nirtorch + snnTorch</td><td>neuroir</td><td><span class='pill ok'>数值一致</span></td><td class='fix'>max|Δ|=0.00e+00 · top1=1.000 · nir 1.0.4</td></tr><tr><td>sinabs (Speck / DynapCNN)</td><td>SynSense</td><td><span class='pill lo'>仅能加载</span></td><td class='fix'>能加载、能跑（per-step, stateful），但不是二值脉冲流（峰值 1.3 脉冲/神经元/步），时间模型与本项目不同，不宣称数值一致</td></tr><tr><td>rockpool (Xylo) frontend</td><td>SynSense</td><td><span class='pill gap'>厂商前端不兼容</span></td><td class='fix'>upstream frontend still reads nir &lt; 1.0 field names (tau_mem); cannot load any nir 1.0 LIF</td></tr><tr><td>rockpool modules (Xylo)</td><td>SynSense</td><td><span class='pill lo'>仅能加载</span></td><td class='fix'>已用 rockpool 自己的神经元跑通；11.9% 的 (神经元,时间步) 一步发多枚脉冲（NIR 未禁止、我们的 LIF 不发）；文件声明 zero reset，rockpool 的神经元只有 subtract；单独把 tau 约定从 exp 换成 Euler，脉冲位置变化 6.82%；逐脉冲一致率 87.29%</td></tr></table><h2>4 · 成本</h2><table><tr><th>指标</th><th style='width:170px'>数值</th><th>口径</th></tr><tr><td>能耗（事件驱动 vs 稠密 ANN）</td><td><code>1.01×</code></td><td class='fix'>45 nm Horowitz 常数，首层按稠密 MAC 计</td></tr><tr><td>稠密等价 MAC / 样本</td><td><code>1,626,112</code></td><td class='fix'>同一网络若按 ANN 跑完全部乘加</td></tr><tr><td>SNN 实际累加 / 样本</td><td><code>6,904</code></td><td class='fix'>另有 1,605,632 次稠密 MAC（首层模拟输入）</td></tr><tr><td>脉冲 / 样本</td><td><code>699</code></td><td class='fix'>2 个脉冲层</td></tr><tr><td>预算 spikes_per_sample</td><td><code>699 / 40,000</code></td><td class='fix'>在预算内</td></tr></table><h2>5 · 怎么复现</h2><pre><code>snndsl deploy examples/mnist_hw.snn --weights build_hw/mnist_hw.pt --verify --report deploy.html</code></pre><p class='small'>本次验证数据：mnist test set, 64 samples。导出方言：最低兼容 nir 1.0.4（省略字段：node/nodes/h1_1/v_reset, node/nodes/y_1/v_reset）。</p><h2>6 · 这份报告证明了什么，没证明什么</h2><ul><li><b>证明了</b>：在 NIR 规范语义下，导出文件与训练模型行为一致，且在至少一个非本项目实现的运行时里复现出相同结果。</li><li><b>没证明</b>：没在真实芯片上跑过。<code>deploy</code> 证明的是“规范语义一致”，不等于“Xylo / Loihi / Speck 上一致”——那需要各自的量化、时序与硬件约束再走一遍。</li><li><b>没证明</b>：没有覆盖目标板的资源约束（神经元数、片上内存、权重位宽）。装不下和跑不对是两件事，这里只回答了后者。</li></ul><footer>snndsl · 单文件报告，无外部依赖 · 2026-10-29 02:09:57</footer></div></body></html>
