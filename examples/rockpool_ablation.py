@@ -185,7 +185,7 @@ def main() -> int:
         return 1
     data = json.loads(proc.stdout.strip().splitlines()[-1])
 
-    rows = {(r["scale"], c["tag"]): r for r, c in zip(data["rows"], cases)}
+    rows = {(r["scale"], c["tag"]): r for r, c in zip(data["rows"], cases, strict=True)}
     print(f"tau={tau}  dt={graph.temporal.dt}  "
           f"直传 tau_mem={data['tau_direct']} (alpha={np.exp(-graph.temporal.dt / tau):.4f})  "
           f"换算后 tau_mem={data['tau_matched']:.4f} (alpha={data['alpha']:.4f})")

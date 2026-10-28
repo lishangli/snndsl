@@ -66,7 +66,7 @@ def _sparsity_chart(rates: Dict[str, float]) -> Optional[str]:
     vals = [rates[k] * 100 for k in names]
     fig, ax = plt.subplots(figsize=(6.2, 2.4))
     bars = ax.bar(names, vals, color="#8e44ad", alpha=0.85)
-    for b, v in zip(bars, vals):
+    for b, v in zip(bars, vals, strict=True):
         ax.text(b.get_x() + b.get_width() / 2, v + 0.6, f"{v:.1f}%",
                 ha="center", fontsize=8)
     ax.set_ylabel("firing rate (%)")

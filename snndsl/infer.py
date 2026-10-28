@@ -109,7 +109,7 @@ class DeployedModel:
             "confidence": v[:, 0].tolist(),
             "topk": [{"class": self.classes[i] if i < len(self.classes) else str(i),
                       "score": float(s)}
-                     for i, s in zip(idx[0].tolist(), v[0].tolist())],
+                     for i, s in zip(idx[0].tolist(), v[0].tolist(), strict=True)],
             "scores": out.tolist(),
             "spikes_per_layer": per_layer,
             "spikes_per_sample": sum(p["spikes_per_sample"] for p in per_layer.values()),

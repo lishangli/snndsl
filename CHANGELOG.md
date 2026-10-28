@@ -38,6 +38,10 @@ deep-learning framework to write a text file is a packaging bug.
   `__all__` and `__slots__`, a redundant `int()` cast, a dict comprehension);
   the public `__all__` in `snndsl/__init__.py` is exempt because its order is
   the order a reader learns the package in.
+- the nirtorch probe reported every import failure as "not installed in this
+  interpreter" — the same sentence for a missing `snntorch`, a missing
+  `nirtorch` and a missing `torch`. It now names the module, which is the
+  difference between a message you can act on and one you can only stare at.
 
 ### Added
 
@@ -49,12 +53,20 @@ deep-learning framework to write a text file is a packaging bug.
   smoke step is split so `deploy --verify` only runs where torch exists, and the
   package job compiles a program from the installed wheel with no backends at
   all. ruff is pinned to the version the project is clean against.
+- `[full]` now carries `nirtorch` and `snntorch`. Neither belongs in `[nir]`:
+  that extra is what the numpy-only job installs to prove the compiler core has
+  no torch, and both of these pull torch in. They were missing, which is why the
+  first four green-looking test jobs were red.
 
 ### Changed
 
 - test counts: 77 passed / 4 skipped with torch and nir, 31 passed / 7 skipped
   with numpy alone (0.2.0 recorded 73 / 27; the three extra tests are
   `tests/test_artifacts.py`, which runs in both configurations).
+- minimum Python is now **3.10**. 3.9 reached end of life in October 2025 and
+  `ubuntu-latest` moved to 26.04, where `setup-python` no longer offers a 3.9
+  build — keeping the classifier would have meant advertising a version CI
+  cannot even install. The matrix now runs 3.10 – 3.13.
 
 ## [0.2.0] - 2025-10-29
 

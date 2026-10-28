@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
@@ -424,7 +425,12 @@ def _explain(tail: str) -> str:
     if "unexpected keyword argument" in tail:
         return "the installed nir is older than the one this file was written by"
     if "ModuleNotFoundError" in tail:
-        return "not installed in this interpreter"
+        # naming the module turns "not installed" into something actionable;
+        # dropping it is how a missing snntorch reads exactly like a missing
+        # nirtorch and neither one can be fixed from the message
+        m = re.search(r"No module named '([^']+)'", tail)
+        return (f"not installed in this interpreter: {m.group(1)}" if m
+                else "not installed in this interpreter")
     return tail[:220]
 
 

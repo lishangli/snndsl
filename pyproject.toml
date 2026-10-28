@@ -8,7 +8,7 @@ description = "A domain specific language and compiler for spiking neural networ
 readme = "README.md"
 dynamic = ["version"]
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "snndsl contributors" }]
 keywords = [
     "spiking-neural-networks",
@@ -26,10 +26,10 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Compilers",
     "Typing :: Typed",
@@ -47,6 +47,10 @@ full = [
     "torchvision>=0.15",
     "nir>=1.0",
     "nirtorch>=2.0",
+    # the nirtorch probe builds its model with snnTorch, so "probe the
+    # third-party frontend" needs it; without it the probe reports
+    # "not installed" and the cross-check silently stops cross-checking
+    "snntorch>=0.9",
     "matplotlib>=3.7",
 ]
 dev = [
@@ -96,14 +100,14 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 src = ["snndsl", "tests", "examples"]
 
 [tool.ruff.lint]
 # E/F/W: pycodestyle + pyflakes, I: import order, B: bugbear, C4: comprehensions,
 # RUF: ruff's own. ``UP`` and ``SIM`` are deliberately out: they mainly rewrite
 # ``typing.List`` into ``list`` and collapse equivalent branches, which is churn
-# in a codebase that still supports 3.9 and gains nothing at runtime.
+# in a codebase that still supports 3.10 and gains nothing at runtime.
 select = ["E", "F", "W", "I", "B", "C4", "RUF"]
 ignore = [
     "E501",   # long lines carry measured numbers and terminal output on purpose
@@ -122,7 +126,7 @@ ignore = [
 "snndsl/__init__.py" = ["RUF022"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true

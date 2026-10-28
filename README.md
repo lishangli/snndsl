@@ -1,10 +1,9 @@
 # snndsl — 脉冲神经网络的领域特定语言与编译器
 
 [![CI](https://github.com/lishangli/snndsl/actions/workflows/ci.yml/badge.svg)](https://github.com/lishangli/snndsl/actions/workflows/ci.yml)
-[![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
-[![tests](https://img.shields.io/badge/tests-70%20passed%20%2F%204%20skipped-brightgreen)](tests/)
+[![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.2.0-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.2.1-informational)](CHANGELOG.md)
 
 用两种前端描述脉冲神经网络（拓扑、神经元动力学、时间语义、训练配方、部署预算）：
 一份声明式文本 `.snn`，或直接写 Python。两者编译成**同一个静态 SNN IR**，
