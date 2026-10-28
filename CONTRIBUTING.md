@@ -29,6 +29,16 @@ python -m ruff check snndsl tests examples
 snndsl doctor                       # what this machine can actually do
 ```
 
+The compiler core must work with numpy alone, so the suite also runs without the
+backends installed:
+
+```bash
+python -m pytest -q                 # 27 passed, 7 skipped (numpy only)
+```
+
+If that number drops, something in the frontend or the passes grew a dependency
+it should not have. CI runs both configurations.
+
 The four skips are the vendor-toolchain probes. They need a *separate*
 interpreter, because SynSense's packages pin `nir==1.0.4` and this project
 exports with 1.0.8:

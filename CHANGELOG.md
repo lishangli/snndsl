@@ -38,6 +38,10 @@ an upstream or standard-level fact.
   with its status and the command that demonstrates it.
 - `tests/test_docs_links.py` — every relative link in the documentation must
   resolve, because nothing else fails when a file is renamed.
+- `tests/conftest.py` — the suite reports which backends are installed instead of
+  failing collection: `pytest -q` is 73 passed / 4 skipped with torch and nir,
+  27 passed / 7 skipped with numpy alone. The numpy-only number is the point - it
+  is what keeps the compiler core from quietly depending on torch.
 - Apache-2.0 licence, issue and PR templates, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CITATION.cff`, `.editorconfig`.
 

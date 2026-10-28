@@ -4,6 +4,7 @@ Run with:  python -m unittest discover -s tests -v
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
 import tempfile
@@ -15,6 +16,8 @@ from snndsl import parser as snn_parser
 from snndsl.errors import ParseError, SemaError, SNNError
 from snndsl.passes import live_peak_bytes
 from snndsl.pipeline import compile_source, load_module
+
+HAS_TORCH = importlib.util.find_spec("torch") is not None
 
 MINIMAL = """
 program tiny
@@ -139,6 +142,7 @@ class TestPasses(unittest.TestCase):
 
 
 class TestCodegen(unittest.TestCase):
+    @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_module_runs_and_backprops(self):
         import torch
         r = compile_source(MINIMAL)
@@ -156,6 +160,7 @@ class TestCodegen(unittest.TestCase):
         self.assertIn("surrogate_fast_sigmoid", r.module_source)
         self.assertNotIn("> v_th", r.module_source)
 
+    @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_state_reset_between_calls(self):
         import torch
         r = compile_source(MINIMAL)
@@ -183,6 +188,7 @@ class TestBackends(unittest.TestCase):
             back = nirlib.read(path)
             self.assertEqual(len(back.edges), len(rep["edges"]))
 
+    @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_energy_model_monotone(self):
         from snndsl.runner import energy_report
         g = compile_source(MINIMAL).graph
@@ -291,6 +297,7 @@ infer:
             x = torch.rand(6, 8)
             return net, net(x)
 
+    @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_membrane_readout_is_not_one_hot(self):
         net, out = self._build("membrane")
         self.assertEqual(tuple(out.shape), (6, 4))
@@ -298,6 +305,7 @@ infer:
         nonzero = (out.abs() > 1e-9).sum(dim=1)
         self.assertTrue(bool((nonzero > 1).all()), f"degenerate logits: {out}")
 
+    @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_spike_and_membrane_differ(self):
         import torch
         _, a = self._build("spikes")
