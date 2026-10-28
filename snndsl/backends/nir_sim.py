@@ -47,7 +47,7 @@ class NIRSimError(RuntimeError):
 def _topo_order(nodes: Dict[str, Any],
                 edges: Sequence[Tuple[str, str]]) -> List[str]:
     """Kahn's algorithm. NIR graphs are DAGs by construction."""
-    indeg = {k: 0 for k in nodes}
+    indeg = dict.fromkeys(nodes, 0)
     adj: Dict[str, List[str]] = {k: [] for k in nodes}
     for src, dst in edges:
         if src not in nodes or dst not in nodes:
@@ -130,7 +130,7 @@ def _to_state(p: torch.Tensor, like: torch.Tensor) -> torch.Tensor:
 class _NeuronState:
     """Membrane bookkeeping for one spiking node."""
 
-    __slots__ = ("v", "mem", "spk")
+    __slots__ = ("mem", "spk", "v")
 
     def __init__(self, n: int, v_init: float, dtype=torch.float32):
         self.v = torch.full((n,), float(v_init), dtype=dtype)

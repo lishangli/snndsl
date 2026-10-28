@@ -27,6 +27,8 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 13 | 第二个独立后端（Nengo/Lava） | **我们的** | 未开始 |
 | 14 | 真机 / 厂商仿真器 | **外部** | 未做 · 只有 Python 神经元 |
 | 15 | 12 场用户访谈 | **外部** | 未做 · 工具包已备 |
+| 16 | `build` 要 torch 才能写文件 | **我们的** | 已关闭 · numpy-only 下通过 |
+| 17 | `nir_sim` 拿 torch 当张量库 | **我们的** | 开着 · `--verify` 需要 PyTorch |
 
 ---
 
@@ -95,6 +97,22 @@ python -m pytest tests/test_bridge.py -q      # 5 passed
 
 ```bash
 python -m snndsl.cli export examples/mnist_hw.snn -o /tmp/x.nir   # 写盘即回读自证
+```
+
+### 16 · `build` 要 torch 才能写文件 —— 我们的 bug
+
+产物导出函数住在 `snndsl/runner.py`，那个模块顶层 `import torch`。结果是"写三个
+文本文件"这件事，要求机器先装 800 MB 的框架。第一次在空 venv 里手工复现 CI 定义的
+job 就撞上了：`ModuleNotFoundError: No module named 'torch'`，退出码 1，一个产物都没有。
+CI 一直没跑起来，所以这个 bug 一直没暴露。
+
+修法是把导出挪进 `snndsl/artifacts.py`（不 import 任何后端），`runner` 保留再导出。
+同一轮修掉配套的两个坑：缺后端时给 `error[backend]` 加安装建议而不是 traceback；
+缺 `nir` 时不再留下一个没人解释的 `.nir.json`。
+
+```bash
+python -m venv /tmp/v && /tmp/v/bin/pip install numpy . \
+  && /tmp/v/bin/snndsl build examples/mnist_mlp.snn -o /tmp/b   # 退出码 0
 ```
 
 ---
@@ -176,11 +194,28 @@ Nengo 或 Lava 会让它变成两个方向。未开始。
 
 这一项不能由代码完成，也不能由写代码的人代答。
 
+### 17 · `nir_sim` 拿 torch 当张量库 —— 我们的
+
+参考解释器是"最该被审计的一段"，但它 `import torch` 只是为了 float32 张量。
+后果：`snndsl deploy --verify` 需要整个 PyTorch——而它验证的命题恰恰是
+"这个网络能不能离开 PyTorch"。说得出理由（torch 保证 float32 逐位复现，
+换成 numpy 得重新证明一遍），但依赖面确实比必要的大。
+
+改成 numpy 是独立的一项工作：会动 439 行数值代码，且必须保持 `max|Δ|=0.0`
+与 75,856 个脉冲位置零差异不变。先记账，不混进这一版。
+
+状态：**开着**。在无 torch 的机器上 `snndsl doctor` 会直接说：
+
+```
+what works right now
+  verify against NIR : no
+```
+
 ---
 
 ## 怎么用这张表
 
-- 想判断能不能用：先看第 9–11 条属于你的网络吗，属于就别绕，绕不过去。
+- 想判断能不能用：先看第 9–11、17 条属于你的网络吗，属于就别绕，绕不过去。
 - 想贡献：第 13 条是价值最高且不需要外部条件的；第 9–11 条需要向上游推。
 - 想质疑结论：每一条都给了命令。跑不出同样的数字，就是这张表错了，
   提 issue 时把 `snndsl doctor` 一起贴上。

@@ -18,7 +18,7 @@ from .ir import IRGraph
 from .passes import ALL_PASSES, OPT_IN_PASSES, PassReport
 from .sema import analyze
 
-__all__ = ["CompileResult", "compile_source", "compile_file", "load_module"]
+__all__ = ["CompileResult", "compile_file", "compile_source", "load_module"]
 
 
 @dataclass

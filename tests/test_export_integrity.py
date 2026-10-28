@@ -153,7 +153,7 @@ def test_verify_reads_the_file_it_is_given(tmp_path):
     good = str(tmp_path / "good.nir")
     export_nir(res.graph, good, _weights(net), strict=True)
 
-    other, net2 = _compile("two_b")
+    _other, net2 = _compile("two_b")
     _train_like(net2, seed=7)
     bad = str(tmp_path / "bad.nir")
     export_nir(res.graph, bad, _weights(net2), strict=True)

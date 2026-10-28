@@ -36,7 +36,7 @@
 ## 1. 快速开始
 
 ```bash
-pip install -e ".[full]"
+pip install -e ".[full]"                        # 只写编译器？`pip install snndsl` 就够（numpy）
 snndsl doctor                                     # 这台机器上哪些部分真的能用
 
 snndsl inspect examples/mnist_membrane.snn        # 看 IR、形状、优化报告
@@ -609,10 +609,16 @@ snndsl infer examples/mnist_membrane.snn --weights build_mem/mnist_membrane.pt -
 ## 9. 测试
 
 ```bash
-python -m pytest -q                       # 73 passed, 4 skipped
+python -m pytest -q                       # 77 passed, 4 skipped
 python -m pytest --cov=snndsl             # 覆盖率
 python -m ruff check snndsl tests examples
 ```
+
+只有 numpy 的机器上（不装 torch、不装 nir）：`31 passed, 7 skipped`，而且
+`snndsl build` 照样产出 `.py` + `.ir.json` —— 编译器核心不依赖 torch 不是一句
+口号，`tests/test_artifacts.py` 在子进程里屏蔽掉 torch 的 import 机制来证明它，
+因为一个装了 torch 的环境没法自证“不需要 torch”。缺后端时命令给的是
+`error[backend]: this command needs PyTorch...` 加怎么装，不是 traceback。
 
 覆盖：词法/语法错误定位、常量折叠、形状推断、SSA 重绑定、DCE、buffer 复用、
 flatten 融合、时间步调度、direct_input、生成模块可前向可反传、状态跨调用隔离、

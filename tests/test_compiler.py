@@ -299,7 +299,7 @@ infer:
 
     @unittest.skipUnless(HAS_TORCH, "executing the generated module needs torch")
     def test_membrane_readout_is_not_one_hot(self):
-        net, out = self._build("membrane")
+        _net, out = self._build("membrane")
         self.assertEqual(tuple(out.shape), (6, 4))
         # every row must have more than one non-zero logit, i.e. real margins
         nonzero = (out.abs() > 1e-9).sum(dim=1)

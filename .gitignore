@@ -1,14 +1,25 @@
 # 构建产物（`snndsl build` 生成）
 build/
 build_*/
+dist/
 
 # 数据集（本地软链，不入库）
+# 只忽略仓库根目录的 data：`data` 是指向本地数据集的 symlink，写成 `data/`
+# 反而不匹配 symlink，曾经让 3.4 G 的数据集差点被提交
 /data
-data/
 
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
 .venv/
+venv/
+
+# 测试与静态检查的缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

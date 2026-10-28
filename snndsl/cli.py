@@ -22,15 +22,22 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 def _cmd_build(args) -> int:
+    from .artifacts import export_artifacts
     from .pipeline import compile_file
-    from .runner import export_artifacts
     r = compile_file(args.file, passes=args.passes)
     print(r.summary())
     paths = export_artifacts(r, args.out)
     print("\nartifacts:")
     for kind, p in paths.items():
-        if p.endswith((".py", ".json", ".nir")):
+        if not kind.endswith("_error") and p.endswith((".py", ".json", ".nir")):
             print(f"  {kind:<10} {p}")
+    nir_error = paths.get("nir_error")
+    if nir_error:
+        # silence here would leave a mystery: a build that claims success but
+        # has no .nir file on disk, and a stray .nir.json nobody mentions
+        print(f"\nnote: no .nir file was written - {nir_error}")
+        if "nir package missing" in nir_error:
+            print("      hint: pip install 'snndsl[nir]' enables the NIR exporter")
     if args.emit_asm:
         print("\n--- generated module ---")
         print(r.module_source)
@@ -100,7 +107,7 @@ def _cmd_infer(args) -> int:
         r = dep.predict(x, topk=args.topk)
         print("\n--- decision ---")
         for item in r["topk"]:
-            bar = "█" * max(int(round(item["score"] * 36)), 1)
+            bar = "█" * max(round(item["score"] * 36), 1)
             print(f"  class {item['class']:>2}  {item['score'] * 100:6.2f}%  {bar}")
         print(f"  -> predict {dep.classes[r['pred'][0]]}"
               + (f"   (true label {int(y[0])})" if y is not None else ""))
@@ -549,6 +556,33 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+_BACKEND_HINTS = {
+    "torch": ("PyTorch", "pip install 'snndsl[torch]'"),
+    "torchvision": ("torchvision", "pip install 'snndsl[torch]'"),
+    "nir": ("NIR", "pip install 'snndsl[nir]'"),
+    "nirtorch": ("nirtorch", "pip install nirtorch"),
+    "sinabs": ("sinabs", "pip install sinabs"),
+    "rockpool": ("rockpool", "pip install rockpool"),
+    "matplotlib": ("matplotlib", "pip install 'snndsl[report]'"),
+}
+
+
+def _missing_backend_message(err: ModuleNotFoundError) -> str:
+    """Turn a missing optional backend into a diagnostic.
+
+    A user who runs ``snndsl run`` on a machine without torch should be told
+    which extra to install, not handed a traceback that ends in a bare
+    ``ModuleNotFoundError``.
+    """
+    root = (err.name or "").split(".")[0] or "a dependency"
+    label, install = _BACKEND_HINTS.get(root, (root, f"pip install {root}"))
+    return (
+        f"error[backend]: this command needs {label}, which is not installed here\n"
+        f"    hint: {install}\n"
+        f"    note: 'snndsl doctor' lists which parts of the toolchain work on this machine"
+    )
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -561,6 +595,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception:
             pass
         print(err.render(src, getattr(args, "file", "<snn>")), file=sys.stderr)
+        return 2
+    except ModuleNotFoundError as err:
+        print(_missing_backend_message(err), file=sys.stderr)
         return 2
     except FileNotFoundError as err:
         print(f"error: {err}", file=sys.stderr)

@@ -190,12 +190,12 @@ def build_report(snn_path: str, out_path: str, epochs: Optional[int] = None,
                  run_training: bool = True, device: str = "cpu",
                  weights: Optional[str] = None,
                  history: Optional[List[Dict[str, float]]] = None) -> str:
+    from .artifacts import export_artifacts
     from .backends import runtime as rt
     from .runner import (
         check_budgets,
         energy_report,
         energy_sensitivity,
-        export_artifacts,
         measure_sparsity,
         spike_budget,
     )

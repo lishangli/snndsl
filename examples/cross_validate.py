@@ -192,7 +192,7 @@ def build_third_party(nir_path: str, dt: float):
 
 def run(nir_path: str, program: str, checkpoint: str, dt: float,
         steps: int, samples: int, batch: int, data: str) -> dict:
-    graph, third, mapping = build_third_party(nir_path, dt)
+    _graph, third, mapping = build_third_party(nir_path, dt)
 
     # ---- our own implementation, for the comparison
     result = compile_source(open(program, encoding="utf-8").read())

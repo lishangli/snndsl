@@ -12,6 +12,50 @@ its numbers are checkable:
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-10-29
+
+The "`build` works on a numpy box" release. Everything here came out of a CI
+workflow that could not be pushed for two rounds, so the job it defines was
+reproduced by hand in an empty virtualenv — where `snndsl build` died with
+`ModuleNotFoundError: No module named 'torch'`. A compile that needs a
+deep-learning framework to write a text file is a packaging bug.
+
+### Fixed
+
+- `snndsl build` no longer needs PyTorch. The artifact emitter lived in
+  `snndsl.runner`, whose module-level `import torch` dragged the whole training
+  stack into a compile. It now lives in `snndsl.artifacts`, and
+  `from snndsl.runner import export_artifacts` still resolves, so nothing that
+  imported it from the old home breaks.
+- A missing backend now reads as a diagnostic instead of a traceback:
+  `error[backend]: this command needs PyTorch, which is not installed here`,
+  followed by the exact extra to install, exit code 2.
+- `snndsl build` without the `nir` package used to print nothing and leave
+  `<name>.nir.json` on disk — a file with a hardware-ish name and no
+  explanation. It now says what was skipped, where the fallback went, and which
+  extra enables the real exporter.
+- ruff 0.17 clean: 13 findings fixed (unused unpacked variables, unsorted
+  `__all__` and `__slots__`, a redundant `int()` cast, a dict comprehension);
+  the public `__all__` in `snndsl/__init__.py` is exempt because its order is
+  the order a reader learns the package in.
+
+### Added
+
+- `tests/test_artifacts.py` — proves the absence of torch by blocking it inside
+  a child process's import machinery, because an environment that has torch
+  cannot prove it does not need it.
+- CI hardening: the numpy-only job now asserts torch really is absent (a base
+  image that shipped it would turn a meaningful job into a green no-op), the
+  smoke step is split so `deploy --verify` only runs where torch exists, and the
+  package job compiles a program from the installed wheel with no backends at
+  all. ruff is pinned to the version the project is clean against.
+
+### Changed
+
+- test counts: 77 passed / 4 skipped with torch and nir, 31 passed / 7 skipped
+  with numpy alone (0.2.0 recorded 73 / 27; the three extra tests are
+  `tests/test_artifacts.py`, which runs in both configurations).
+
 ## [0.2.0] - 2025-10-29
 
 The "we were wrong twice, here is the evidence" release. Three of the four

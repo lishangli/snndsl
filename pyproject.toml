@@ -108,6 +108,10 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 "examples/*" = ["B011"]
+# the public __all__ is grouped by layer (errors -> ir -> pipeline -> front end)
+# rather than alphabetised, because that grouping is how a reader learns the
+# package; RUF022 would scramble it into one flat sorted list
+"snndsl/__init__.py" = ["RUF022"]
 
 [tool.mypy]
 python_version = "3.9"

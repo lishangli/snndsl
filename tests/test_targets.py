@@ -41,7 +41,7 @@ def test_zero_reset_file_drops_v_reset_so_older_nir_can_read_it(tmp_path):
     """
     import h5py
 
-    r, net, w = _compile("mnist_hw.snn")
+    r, _net, w = _compile("mnist_hw.snn")
     out = str(tmp_path / "zero.nir")
     report = export_nir(r.graph, out, w, strict=True)
 
@@ -61,7 +61,7 @@ def test_zero_reset_file_drops_v_reset_so_older_nir_can_read_it(tmp_path):
 def test_subtract_reset_drops_the_field_but_keeps_the_fact(tmp_path):
     """A subtract reset has reset target 0, so the field goes — the *semantics*
     must still be recorded, or the file silently claims a zero reset."""
-    r, net, w = _compile("mnist_mlp.snn")
+    r, _net, w = _compile("mnist_mlp.snn")
     out = str(tmp_path / "sub.nir")
     export_nir(r.graph, out, w, strict=True)
 
@@ -132,7 +132,7 @@ def test_probe_survives_a_broken_interpreter():
 
 def test_third_party_reproduces_our_spikes_on_a_real_batch(tmp_path):
     """The load-bearing claim: a foreign runtime, same file, same spikes."""
-    r, net, w = _compile("mnist_hw.snn")
+    r, _net, w = _compile("mnist_hw.snn")
     nir_path = str(tmp_path / "x.nir")
     export_nir(r.graph, nir_path, w, strict=True)
 

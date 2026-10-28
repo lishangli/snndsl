@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import torch
 
+from .artifacts import export_artifacts
 from .backends import runtime as rt
 from .ir import IRGraph
 from .pipeline import CompileResult, compile_file, load_module
@@ -162,27 +163,9 @@ def check_budgets(graph: IRGraph, spikes: float) -> List[Dict[str, Any]]:
 
 
 # ------------------------------------------------------------------ artifacts
-def export_artifacts(result: CompileResult, out_dir: str,
-                     class_name: str = "SnnNet") -> Dict[str, str]:
-    os.makedirs(out_dir, exist_ok=True)
-    name = result.graph.name
-    paths = {
-        "module": os.path.join(out_dir, f"{name}.py"),
-        "ir": os.path.join(out_dir, f"{name}.ir.json"),
-    }
-    with open(paths["module"], "w", encoding="utf-8") as fh:
-        fh.write(result.module_source)
-    with open(paths["ir"], "w", encoding="utf-8") as fh:
-        fh.write(result.graph.to_json())
-    result.module_path = paths["module"]
-    try:
-        from .backends.nir_export import export_nir
-        nir_path = os.path.join(out_dir, f"{name}.nir")
-        export_nir(result.graph, nir_path)
-        paths["nir"] = nir_path
-    except Exception as exc:      # NIR is optional
-        paths["nir_error"] = str(exc)
-    return paths
+# ``export_artifacts`` now lives in :mod:`snndsl.artifacts` so that ``snndsl
+# build`` works without torch; it is imported at the top of this module and
+# stays importable from here for backwards compatibility.
 
 
 # --------------------------------------------------------------------- driver

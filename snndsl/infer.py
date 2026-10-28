@@ -50,7 +50,7 @@ class DeployedModel:
             if not _os.path.exists(weights):
                 raise SNNError(f"checkpoint not found: {weights}")
             ckpt = torch.load(weights, map_location=device, weights_only=False)
-            missing, unexpected = model.load_state_dict(ckpt["state_dict"], strict=False)
+            _missing, unexpected = model.load_state_dict(ckpt["state_dict"], strict=False)
             if unexpected:
                 raise SNNError(f"checkpoint has unexpected tensors: {unexpected[:4]}")
         return cls(result, model, graph, ckpt)

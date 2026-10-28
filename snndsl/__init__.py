@@ -12,7 +12,7 @@ from .ir import IRGraph, IRNode, NeuronSpec, TemporalSpec
 from .pipeline import CompileResult, compile_file, compile_source, load_module
 from .pyfront import ALIF, IF, LIF, Net, Neuron, Tensor, custom, net
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = [
     "SNNError", "Diagnostic", "DiagnosticBag", "IRGraph", "IRNode",
     "NeuronSpec", "TemporalSpec", "CompileResult", "compile_file",
