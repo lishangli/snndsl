@@ -83,7 +83,6 @@ class Parser:
 
     # ---------------------------------------------------------- expressions
     def parse_expr(self, min_bp: int = 0) -> A.Expr:
-        t = self.peek()
         left = self._parse_prefix()
 
         while True:
@@ -106,8 +105,8 @@ class Parser:
             raw = t.value.replace("_", "")
             try:
                 val = float(raw)
-            except ValueError:
-                raise ParseError(f"bad numeric literal {raw!r}", line=t.line, col=t.col)
+            except ValueError as err:
+                raise ParseError(f"bad numeric literal {raw!r}", line=t.line, col=t.col) from err
             node = A.Number(value=val, line=t.line, col=t.col)
             return node
         if t.kind == "STR":

@@ -158,45 +158,62 @@ TypeError: LIF.__init__() got an unexpected keyword argument 'v_reset'
 
 ---
 
-## Issue 4 · nirtorch 的默认映射没有 `Flatten`
+## Issue 4 · nirtorch 把 `AvgPool2d` 映射成了求和池化
 
-### 复现（最小图，不依赖任何模型）
+> **本条第 4 项曾写错并被撤回，撤回记录见本节末尾。** 现在这条是真问题，
+> 有实测、有一行能跑的复现。
+
+### 复现（不依赖任何模型）
 
 ```python
-import nir, numpy as np
-
-g = nir.NIRGraph.from_list(
-    nir.Input(input_type={"input": np.array([16])}),
-    nir.Flatten(input_type={"input": np.array([16])}),
-    nir.Linear(weight=np.zeros((3, 16), dtype=np.float32)),
-    nir.Output(output_type={"output": np.array([3])}),
-)
-nir.write("/tmp/flat.nir", g)
-
-import nirtorch
-nirtorch.nir_to_torch(nir.read("/tmp/flat.nir"))
+import torch
+x = torch.full((1, 1, 4, 4), 2.0)
+print(torch.nn.LPPool2d(1, 2)(x).flatten()[0])   # 8.0  <- nirtorch 走这条
+print(torch.nn.AvgPool2d(2)(x).flatten()[0])     # 2.0  <- 语义上应该走这条
 ```
+
+`nirtorch/nir_interpreter.py` 的 `_default_map_avgpool2d` 返回
+`torch.nn.LPPool2d(norm_type=1, ...)`。Lp 池化定义是
+`(Σ|x|^p)^(1/p)`，`p=1` 时就是**窗口内绝对值之和**，不是平均。
+2×2 窗口恒差 4 倍。
 
 ### 实际
 
-`NotImplementedError: Flatten`
+`nir.AvgPool2d` 的驱动被放大 4 倍。
 
 ### 预期
 
-映射到 `torch.flatten` 就是一行。`Flatten` 从 NIR 1.0 起就在标准里，
-而且在任何视觉网络上必然出现——`conv -> flatten -> linear` 是标准分类头。
+`torch.nn.AvgPool2d`。求和池化已经有 `nir.SumPool2d` 对应，
+两个节点映射到同一个算子，其中一个必然是错的。
 
 ### 影响
 
-这是目前最难受的一条，因为它恰好卡在**验证链的最后一环**：
+卷积 SNN 的第三方交叉验证对不上，而且**对不上的样子很像浮点误差**：
+我们在 `examples/mnist_conv.snn`（训练后 98.06%）上看到
+`max|Δ| = 0.125`——恰好是一个输出类在 8 个时间步里差 1 个脉冲。
+这种数字最容易被写成"阈值附近抖动"糊过去。
 
-`examples/cifar_hw_avg.snn` 导出后，我们自己的参考解释器给出
-`max|Δ| = 0.0`、top-1 一致率 1.000；但第三方只能用 `nirtorch`，
-而它读不了带 `Flatten` 的图。于是卷积网的结论**只有自证，没有他证**——
-这正好是 P0-1 当初要消灭的状态。
+定位方式是逐层挂钩对比脉冲总数，而不是继续调 tolerance。
+修法在 `snndsl/backends/snntorch_bridge.py` 的 `avgpool_module()`：
+不走 `DEFAULT_MAP`，自己建 `nn.AvgPool2d`。修完后同一个文件、同一批电流，
+nirtorch 复现我们每一个脉冲，`max|Δ| = 0.00e+00`。
 
-换句话说：全连接网我们已经证明"第三方能跑出一样的脉冲"，
-卷积网目前只能证明"我们自己能"，两者不能混着说。
+### 撤回记录：原来的第 4 条是错的
+
+> 原文写的是"nirtorch 的默认映射没有 `Flatten`"，并据此说卷积网
+> "只有自证、没有他证"。
+>
+> 事实是 `DEFAULT_MAP` 里**有** `nir.Flatten`。抛 `NotImplementedError: Flatten`
+> 的是我们自己的 `make_map()`：它把 `DEFAULT_MAP`（一个以节点类型为键的字典）
+> 当函数调用，`TypeError` 被一个 `except Exception` 吞掉后改写成
+> `NotImplementedError(kind)`，于是**任何**没被我们单独处理的算子
+> （`Flatten` / `AvgPool2d` / `Conv2d`）都长得像上游缺失。
+>
+> 这已经是同一类错误的第三次：先把自己的缺陷写成"标准不支持卷积"，
+> 再把字典索引错写成"上游没有映射"。两次都写得很专业、都很难被外人查出来，
+> 这也正是最危险的地方。
+>
+> 修完 `make_map` 之后卷积图立刻能在 nirtorch 里加载，他证这条路当天就通了。
 
 ---
 

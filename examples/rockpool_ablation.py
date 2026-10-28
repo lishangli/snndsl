@@ -54,7 +54,7 @@ tau_matched = -dt / np.log(alpha)
 
 def run(tau_mem, x):
     mods = []
-    for layer in p["layers"]:
+    for _layer in p["layers"]:
         w = torch.as_tensor(np.array(layer["w"], dtype="float32"))
         b = torch.as_tensor(np.array(layer["b"], dtype="float32"))
         lin = LinearTorch(shape=(w.shape[1], w.shape[0]), weight=w.T, has_bias=True)
@@ -195,7 +195,7 @@ def main() -> int:
     for scale in SCALES:
         for tag, note in (("torch", "vs 训练实现"), ("nir", "vs 我们的 NIR 文件")):
             r = rows[(scale, tag)]
-            for layer, key, lbl in (("hidden", "_hidden", "隐藏层"), ("out", "", "输出层")):
+            for _layer, key, lbl in (("hidden", "_hidden", "隐藏层"), ("out", "", "输出层")):
                 print(f"| {scale} | {note} | {lbl} | {100 * r['direct' + key]:.2f}% | "
                       f"{100 * r['matched' + key]:.2f}% | {100 * r['multi_spike']:.2f}% |")
     print()

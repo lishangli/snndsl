@@ -9,16 +9,12 @@ The second is deliberately allowed to fail: a vendor frontend that cannot read
 nir 1.0 is a fact about the ecosystem, not a bug in this repository. The tests
 assert that such a failure is *reported*, never that it is silent.
 """
-import json
 import os
-import subprocess
-import sys
 import tempfile
 
 import numpy as np
 import pytest
 import torch
-
 from snndsl.backends import targets as targets_mod
 from snndsl.backends.nir_export import _downgrade_dialect, export_nir
 from snndsl.pipeline import compile_file, load_module
@@ -140,8 +136,8 @@ def test_third_party_reproduces_our_spikes_on_a_real_batch(tmp_path):
     nir_path = str(tmp_path / "x.nir")
     export_nir(r.graph, nir_path, w, strict=True)
 
-    from snndsl.backends import nir_sim
     import nir
+    from snndsl.backends import nir_sim
 
     torch.manual_seed(0)
     sample = torch.rand(4, 1, 28, 28) * 0.9

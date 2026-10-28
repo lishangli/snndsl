@@ -10,7 +10,6 @@ Format spec: https://neuroir.org
 from __future__ import annotations
 
 import json
-import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -81,7 +80,7 @@ def recognise_lif(graph: IRGraph, node: IRNode,
         local = dict(env)
         local[v_name] = v
         local["i"] = i
-        return float(eval(src, {"__builtins__": {}}, local))   # noqa: S307 - own source
+        return float(eval(src, {"__builtins__": {}}, local))   # - own source
 
     try:
         c = f(0.0, 0.0)
@@ -140,7 +139,7 @@ def _probe_reset_mode(spec: Any, env: Dict[str, float], v_name: str,
                 seen_spike = True
                 local[spike_var] = 1.0
             elif seen_spike and kind == "assign" and target == v_name:
-                local[v_name] = float(eval(src, {"__builtins__": {}}, local))  # noqa: S307
+                local[v_name] = float(eval(src, {"__builtins__": {}}, local))
     except Exception:
         return "unknown"
     after = local[v_name]
@@ -207,7 +206,6 @@ def build_nir_graph(graph: IRGraph,
     report["weights_status"] = "supplied" if have_weights else "absent"
     weights = weights or {}
 
-    in_shape = tuple(graph.node(graph.inputs[0]).shape) if graph.inputs else (1,)
     # rate/current coding has no NIR equivalent: inputs are delivered as currents
     skip_ops = {"encode", "decode"}
 
@@ -513,7 +511,7 @@ def _downgrade_dialect(path: str, compat: str) -> List[str]:
                         del group[key]
                         removed.append(prefix.lstrip("/") + "/v_reset")
             walk(fh, "")
-    except Exception:                        # noqa: BLE001 - never fail an export here
+    except Exception:                        # - never fail an export here
         return removed
     return removed
 

@@ -108,11 +108,12 @@ def build_deploy_report(snn_path: str,
     import numpy as np
     import torch
 
-    from .backends import nir_sim, targets as targets_mod
+    from .backends import nir_sim
+    from .backends import targets as targets_mod
     from .backends.nir_export import export_nir
+    from .backends.runtime import count_parameters
     from .deploy import analyze, verify
     from .pipeline import compile_file, load_module
-    from .backends.runtime import count_parameters
     from .runner import check_budgets, energy_report, spike_budget
 
     t_start = time.time()
@@ -144,14 +145,14 @@ def build_deploy_report(snn_path: str,
     export_error = ""
     try:
         export_info = export_nir(graph, nir_path, w_np, strict=True)
-    except Exception as err:                 # noqa: BLE001
+    except Exception as err:
         export_error = f"{type(err).__name__}: {err}"
 
     numbers: Dict[str, Any] = {}
     if not export_error:
         try:
             numbers = verify(graph, net, sample, weights=w_np, nir_path=nir_path)
-        except Exception as err:             # noqa: BLE001
+        except Exception as err:
             numbers = {"error": f"{type(err).__name__}: {err}"}
 
     # ---- foreign frontends, on the same file with the same currents
@@ -176,7 +177,7 @@ def build_deploy_report(snn_path: str,
                 batch=int(sample.shape[0]), dt=float(graph.temporal.dt),
                 targets=targets,
                 trains=t_np if stream is not None else None)
-        except Exception as err:             # noqa: BLE001
+        except Exception as err:
             target_results = [targets_mod.TargetResult(
                 "probe", "cross-check", "-", "error", f"{type(err).__name__}: {err}")]
 
@@ -259,7 +260,7 @@ def _sample_batch(graph, in_shape, data, samples, net, torch, np):
                     break
             x = rt.adapt_batch(torch.cat(xs)[:samples], in_shape)
             return x, f"{data} test set, {x.shape[0]} samples"
-        except Exception as err:             # noqa: BLE001
+        except Exception:
             pass
     torch.manual_seed(0)
     n = 1
@@ -286,7 +287,6 @@ def _render(**kw: Any) -> str:
     tr = kw["target_results"]
     e = html.escape
 
-    verdict_ok = rep.deployable
     if not rep.deployable:
         # lead with the network's problem, not with the export tool's reaction to
         # it: "the file could not be written" is a symptom, the blocker is the cause
@@ -401,10 +401,10 @@ def _render(**kw: Any) -> str:
 
     # ---------------------------------------------------------------- targets
     h.append("<h2>3 · 别人的工具链能不能读这份文件</h2>")
-    h.append(f"<div class='note'>这一节问的不是“文件合不合规范”，而是"
-             f"<b>“拿它去喂别的框架，会不会当场炸”</b>。两者经常不一致：规范改了字段名，"
-             f"厂商前端没跟。所有探测都在独立进程里跑，因为它们的 <code>nir</code> 版本"
-             f"和我们的不一样——装在一起会把我们正在测的版本降级。</div>")
+    h.append("<div class='note'>这一节问的不是“文件合不合规范”，而是"
+             "<b>“拿它去喂别的框架，会不会当场炸”</b>。两者经常不一致：规范改了字段名，"
+             "厂商前端没跟。所有探测都在独立进程里跑，因为它们的 <code>nir</code> 版本"
+             "和我们的不一样——装在一起会把我们正在测的版本降级。</div>")
     if not tr:
         h.append("<p class='small'>本次未运行外部后端探测。</p>")
     else:

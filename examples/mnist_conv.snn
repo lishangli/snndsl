@@ -1,0 +1,72 @@
+# =============================================================================
+# MNIST convolutional SNN - small enough to train on a CPU, convolutional enough
+# to exercise the part of NIR that used to be reported as "unexpressible".
+#
+#   conv -> LIF -> avgpool -> conv -> LIF -> avgpool -> flatten -> dense -> LIF
+#
+#   Two things this example exists to prove, both measured, not asserted:
+#     1. `deploy --verify` round-trips it through NIR with max |error| = 0.0;
+#     2. `deploy --targets nirtorch` reproduces the same spike trains in a
+#        third-party frontend, i.e. the export is verified by someone else's
+#        code and not only by ours.
+#
+#   Pooling is `avg` on purpose: NIR 1.0.x has AvgPool2d and SumPool2d but no
+#   MaxPool2d, so max pooling has no faithful export and `deploy` blocks it.
+#
+#   snndsl run    examples/mnist_conv.snn --epochs 2
+#   snndsl deploy examples/mnist_conv.snn --weights build/mnist_conv.pt --verify
+# =============================================================================
+program mnist_conv
+
+const T_STEPS = 8
+const W_SCALE = 2.0
+
+temporal:
+    steps = T_STEPS
+    dt = 1.0
+    reset = zero
+
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v * (1 - s)
+    surrogate = fast_sigmoid(alpha=4.0)
+
+encoder rate:
+    gain = 1.0
+
+pipeline:
+    input  x  : 1, 28, 28
+    encode x  -> rate with gain=6.0
+    conv   c1 : 8  <- x  with k=3, p=1, scale=W_SCALE
+    neuron c1 -> LIF
+    pool   p1 : 2  <- c1 with kind=avg
+    conv   c2 : 16 <- p1 with k=3, p=1, scale=W_SCALE
+    neuron c2 -> LIF
+    pool   p2 : 2  <- c2 with kind=avg
+    flatten f  <- c2
+    dense  h  : 64 <- f  with scale=W_SCALE
+    neuron h  -> LIF
+    dense  y  : 10 <- h  with scale=W_SCALE
+    neuron y  -> LIF
+    output out <- y
+
+train:
+    data = mnist
+    epochs = 2
+    batch = 128
+    lr = 0.002
+    opt = adamw
+    weight_decay = 0.0001
+    loss = ce
+    sched = cosine
+
+infer:
+    mode = event
+    quant = int8
+
+budget:
+    spikes_per_sample = 60000

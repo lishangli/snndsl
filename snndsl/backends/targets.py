@@ -277,25 +277,44 @@ g = nir.read(p["nir"])
 
 # ---- semantic glue (beta, current gain, zero-reset, the bias that nirtorch's
 # DEFAULT_MAP drops) lives in one audited place, not in this string.
-from snndsl.backends.snntorch_bridge import make_map
+from snndsl.backends.snntorch_bridge import make_map, reset_states
 net = nirtorch.load(g, make_map(float(p["dt"])))
 net.eval()
 T, B = int(p["steps"]), int(p["batch"])
-x = np.load(p["inputs"]).astype("float32").reshape(B, -1)
-cur = torch.as_tensor(x)
-acc = None
-with torch.no_grad():
-    for _ in range(T):
-        y = net(cur)
-        spk = y[0] if isinstance(y, tuple) else y
-        spk = torch.as_tensor(spk).detach().float()
-        acc = spk if acc is None else acc + spk
-rates = (acc / T).numpy()
+
+# NIR graphs are batch-free: an Input node declares (C,H,W), not (B,C,H,W).
+# nirtorch's executor hands tensors straight to torch modules, so the batch
+# dimension has to be reintroduced here. Dense graphs can be flattened to
+# (B, features) and run batched; a graph with convolutions or pooling cannot,
+# because NIR's ``Flatten`` uses ``start_dim=0`` (right for a batch-free graph,
+# wrong for a (B,C,H,W) tensor - it would swallow the batch). Those run one
+# sample at a time so the graph sees exactly the rank it declares.
+SPATIAL = ("Conv1d", "Conv2d", "AvgPool1d", "AvgPool2d", "SumPool1d", "SumPool2d")
+has_spatial = any(type(n).__name__ in SPATIAL for n in g.nodes.values())
+in_shape = [int(v) for v in list(g.input_type.values())[0]]
+per_sample = has_spatial
+x = np.load(p["inputs"]).astype("float32").reshape(B, *in_shape) if per_sample \
+    else np.load(p["inputs"]).astype("float32").reshape(B, -1)
+out["batch_mode"] = "per-sample" if per_sample else "batched"
+
+def run_one(sample):
+    reset_states(net)                  # a fresh sample starts from rest
+    cur = torch.as_tensor(sample[None] if per_sample else sample)
+    acc = None
+    with torch.no_grad():
+        for _ in range(T):
+            y = net(cur)
+            spk = y[0] if isinstance(y, tuple) else y
+            spk = torch.as_tensor(spk).detach().float()
+            acc = spk if acc is None else acc + spk
+    return (acc / T).reshape(-1)
+
+rates = np.stack([run_one(x[i]).numpy() for i in range(B)])
 ref = np.load(p["reference"]).astype("float32")
 out["max_abs_error"] = float(np.abs(rates - ref).max())
 out["top1_agreement"] = float((rates.argmax(1) == ref.argmax(1)).mean())
 out["spike_rate"] = float(rates.mean())
-out["silent"] = bool(not np.any(acc.numpy()))
+out["silent"] = bool(not np.any(rates))
 out["status"] = "ok"
 print(json.dumps(out))
 """
@@ -372,7 +391,7 @@ def probe(nir_path: str,
             continue
         try:
             data = json.loads(proc.stdout.strip().splitlines()[-1])
-        except Exception:                    # noqa: BLE001
+        except Exception:
             results.append(TargetResult(key, label, vendor, "error",
                                         "probe printed no JSON"))
             continue
@@ -392,7 +411,7 @@ def _nir_version_from(stdout: str) -> str:
         if line.startswith("{") and "nir_version" in line:
             try:
                 return json.loads(line).get("nir_version", "")
-            except Exception:                # noqa: BLE001
+            except Exception:
                 return ""
     return ""
 

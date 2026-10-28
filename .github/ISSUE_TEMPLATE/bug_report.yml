@@ -1,0 +1,58 @@
+name: Bug report
+description: Something compiled, ran, or reported a number that is wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things make a bug report here actionable: the environment, and the
+        smallest file that shows the problem. A five-line `.snn` that reproduces
+        it is worth more than a paragraph of description.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and its output, verbatim.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and why
+      description: >
+        If a number is wrong, say what the number should be and where that
+        expectation comes from (another framework, the NIR spec, hand arithmetic).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest `.snn` source, or the Python snippet, that shows it.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`snndsl doctor`"
+      description: Paste the whole output. It reports the versions that matter.
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part
+      options:
+        - frontend / parser / diagnostics
+        - IR or optimisation passes
+        - code generation or training
+        - inference / energy model
+        - NIR export or the reference interpreter
+        - deploy analysis or the HTML report
+        - third-party probe (nirtorch / sinabs / rockpool)
+        - documentation, and the claim in it is wrong
+    validations:
+      required: true

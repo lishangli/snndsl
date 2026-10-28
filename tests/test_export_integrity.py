@@ -21,11 +21,13 @@ import nir
 import numpy as np
 import pytest
 import torch
-
 from snndsl import compile_source, load_module
-from snndsl.backends.nir_export import (build_nir_graph, export_nir,
-                                        parameter_fingerprint,
-                                        roundtrip_problems)
+from snndsl.backends.nir_export import (
+    build_nir_graph,
+    export_nir,
+    parameter_fingerprint,
+    roundtrip_problems,
+)
 from snndsl.deploy import verify
 
 SMALL = """

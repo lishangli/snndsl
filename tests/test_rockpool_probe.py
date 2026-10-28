@@ -19,8 +19,8 @@ import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from snndsl.backends import nir_sim, targets  # noqa: E402
-from snndsl.backends.nir_export import _downgrade_dialect  # noqa: E402
+from snndsl.backends import nir_sim, targets
+from snndsl.backends.nir_export import _downgrade_dialect
 
 VENDOR = os.environ.get("SNNDSL_VENDOR_PYTHON")
 
@@ -53,10 +53,10 @@ def _tiny_net(path: str):
     w = np.array([[0.40, -0.10, 0.05, 0.00],
                   [0.00, 0.35, -0.05, 0.10],
                   [-0.10, 0.05, 0.40, 0.05]], dtype=np.float32)
-    lif = dict(tau=np.array([2.0, 2.0, 2.0], dtype=np.float32),
-               r=np.array([2.0, 2.0, 2.0], dtype=np.float32),
-               v_leak=np.array([0.0, 0.0, 0.0], dtype=np.float32),
-               v_threshold=np.array([1.0, 1.0, 1.0], dtype=np.float32))
+    lif = {"tau": np.array([2.0, 2.0, 2.0], dtype=np.float32),
+           "r": np.array([2.0, 2.0, 2.0], dtype=np.float32),
+           "v_leak": np.array([0.0, 0.0, 0.0], dtype=np.float32),
+           "v_threshold": np.array([1.0, 1.0, 1.0], dtype=np.float32)}
     graph = nir.NIRGraph(nodes={
         "in": nir.Input(np.array([4])),
         "a": nir.Affine(w, np.zeros(3, dtype=np.float32)),

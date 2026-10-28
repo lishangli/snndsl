@@ -13,9 +13,12 @@ import argparse
 import json
 import os
 import sys
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from .errors import SNNError
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import torch
 
 
 def _cmd_build(args) -> int:
@@ -49,6 +52,7 @@ def _cmd_run(args) -> int:
 
 def _cmd_infer(args) -> int:
     import torch
+
     from . import infer as inf
     dep = inf.DeployedModel.load(args.file, weights=args.weights,
                                  out_dir=args.out, passes=args.passes,
@@ -63,8 +67,8 @@ def _cmd_infer(args) -> int:
 
     # ---- pick the inputs to run on
     if args.image:
-        from PIL import Image
         import numpy as np
+        from PIL import Image
         img = Image.open(args.image).convert("L")
         arr = torch.from_numpy(np.asarray(img, dtype="float32") / 255.0)
         x = arr.unsqueeze(0).unsqueeze(0)
@@ -128,7 +132,7 @@ def _cmd_infer(args) -> int:
             acc = (preds == y).float().mean().item()
             print(f"\n--- held-out accuracy ---\n  {acc * 100:.2f}% "
                   f"on {y.numel()} samples")
-        print(f"\n--- sparsity ---")
+        print("\n--- sparsity ---")
         for name, st in r["spikes_per_layer"].items():
             print(f"  {name:<12} rate {st['rate'] * 100:5.1f}%")
         bench = dep.benchmark(x, repeats=args.repeats)
@@ -174,7 +178,7 @@ def _cmd_inspect(args) -> int:
         for name, spec in r.graph.neurons.items():
             print(f"  {name}: params={spec.params} states={spec.states} "
                   f"surrogate={spec.surrogate}")
-            for kind, target, src in spec.body:
+            for _kind, target, src in spec.body:
                 print(f"      {target} = {src}")
     if args.src:
         print("\n--- generated module ---")
@@ -219,7 +223,7 @@ def _verification_batch(args, result, in_shape, torch):
             test = loaders["test"] if isinstance(loaders, dict) else loaders[-1]
             xb, _ = next(iter(test))
             return xb[: args.batch], f"{want} test split, {xb.shape[0]} samples"
-        except Exception as exc:       # noqa: BLE001 - fall back, but say so
+        except Exception as exc:       # - fall back, but say so
             print(f"  note: no {want} data ({type(exc).__name__}: {exc}); "
                   f"falling back to random input", file=sys.stderr)
     torch.manual_seed(int(args.seed))
@@ -289,13 +293,13 @@ def _cmd_deploy(args) -> int:
     nir_file = os.path.join(tempfile.mkdtemp(), "deploy_check.nir")
     try:
         export_nir(r.graph, nir_file, weights, strict=True)
-    except Exception as err:                    # noqa: BLE001 - report, don't crash
+    except Exception as err:                    # - report, don't crash
         print(f"\nexport failed: {type(err).__name__}: {err}", file=sys.stderr)
         return 4
 
     try:
         res = verify(r.graph, net, sample, weights=weights, nir_path=nir_file)
-    except Exception as err:                    # noqa: BLE001 - report, don't crash
+    except Exception as err:                    # - report, don't crash
         print(f"\nverification failed: {type(err).__name__}: {err}", file=sys.stderr)
         return 3
 
@@ -339,15 +343,25 @@ def _cmd_deploy(args) -> int:
 
     # ---- does anyone else's toolchain actually open this file?
     if not args.no_targets:
-        import numpy as np
         import nir as nir_pkg
-        from .backends import nir_sim, targets as targets_mod
+        import numpy as np
+
+        from .backends import nir_sim
+        from .backends import targets as targets_mod
         work = os.path.dirname(nir_file)
         x_np, r_np = os.path.join(work, "probe_in.npy"), os.path.join(work, "probe_ref.npy")
         t_np = os.path.join(work, "probe_trains.npy")
-        np.save(x_np, sample.detach().cpu().numpy())
+        # a `rate` encoder is a constant current of ``x * gain``; the encoder has
+        # no NIR node, so the gain has to be folded into the drive the foreign
+        # frontend receives, exactly as ``verify`` does. Leaving it out makes the
+        # probe compare a 3x-scaled graph against an unscaled one.
+        drive = sample
+        for _n in r.graph.nodes:
+            if _n.op == "encode" and str(_n.attrs.get("scheme", "")) == "rate":
+                drive = drive * float(_n.attrs.get("gain", 1.0))
+        np.save(x_np, drive.detach().cpu().numpy())
         _g = nir_pkg.read(nir_file)
-        _sim = nir_sim.simulate(_g, sample,
+        _sim = nir_sim.simulate(_g, drive,
                                 steps=int(r.graph.temporal.steps),
                                 dt=float(r.graph.temporal.dt))
         ref = nir_sim.readout(_g, _sim, mode=rep.readout)
@@ -368,6 +382,66 @@ def _cmd_deploy(args) -> int:
     return 0
 
 
+def _cmd_doctor(args) -> int:
+    """Report what this install can actually do, and what it cannot.
+
+    A toolchain that silently degrades is worse than one that refuses: it
+    exports a file, probes nothing, and the report looks complete. Each row
+    below is a capability this project claims elsewhere, checked on the spot.
+    """
+    import importlib
+    import platform
+
+    from . import __version__
+
+    def probe(module: str):
+        try:
+            mod = importlib.import_module(module)
+            return getattr(mod, "__version__", "installed")
+        except Exception as exc:                       # any import failure means "missing"
+            return f"missing ({type(exc).__name__})"
+
+    rows = [
+        ("python", platform.python_version(), True),
+        ("snndsl", __version__, True),
+        ("numpy", probe("numpy"), True),
+        ("torch", probe("torch"), False),
+        ("torchvision", probe("torchvision"), False),
+        ("nir", probe("nir"), False),
+        ("nirtorch", probe("nirtorch"), False),
+        ("nirutils", probe("nirutils"), False),
+        ("matplotlib", probe("matplotlib"), False),
+    ]
+    print(f"{'component':<14} {'status':<28} required")
+    print("-" * 54)
+    missing_required = []
+    for name, value, required in rows:
+        print(f"{name:<14} {value:<28} {'yes' if required else 'no'}")
+        if required and value.startswith("missing"):
+            missing_required.append(name)
+
+    print("\nvendor interpreters (they pin an older nir, so they never share ours)")
+    vendor = os.environ.get("SNNDSL_VENDOR_PYTHON")
+    print(f"  SNNDSL_VENDOR_PYTHON : {vendor or '(unset - probes run here)'}")
+    for mod in ("sinabs", "rockpool", "samna"):
+        print(f"  {mod:<20} : {probe(mod)}")
+
+    print("\nwhat works right now")
+    have_torch = not probe("torch").startswith("missing")
+    have_nir = not probe("nir").startswith("missing")
+    print("  compile to Python  : yes")
+    no_torch = 'no   -> pip install "snndsl[torch]"'
+    no_nir = 'no   -> pip install "snndsl[nir]"'
+    print(f"  train / infer      : {'yes' if have_torch else no_torch}")
+    print(f"  export NIR         : {'yes' if have_nir else no_nir}")
+    print(f"  verify against NIR : {'yes' if (have_nir and have_torch) else 'no'}")
+    print(f"  third-party probes : {'yes' if have_nir else 'no'}")
+    if missing_required:
+        print(f"\nmissing required: {', '.join(missing_required)}")
+        return 1
+    return 0
+
+
 def _cmd_report(args) -> int:
     from .report import build_report
     out = build_report(args.file, args.out, epochs=args.epochs,
@@ -378,8 +452,11 @@ def _cmd_report(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from . import __version__
+
     p = argparse.ArgumentParser(
         prog="snndsl", description="A DSL and compiler for spiking neural networks")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp):
@@ -466,6 +543,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "pin a different nir, so they must not share ours")
     common(d)
     d.set_defaults(func=_cmd_deploy)
+
+    doc = sub.add_parser("doctor", help="report which parts of the toolchain work here")
+    doc.set_defaults(func=_cmd_doctor)
     return p
 
 

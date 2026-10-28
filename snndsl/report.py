@@ -12,10 +12,10 @@ import io
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from .ir import IRGraph
-from .pipeline import CompileResult, compile_file, load_module
+from .pipeline import compile_file, load_module
 
 
 def _fig_to_b64(fig) -> str:
@@ -48,7 +48,7 @@ def _training_chart(history: List[Dict[str, float]]) -> Optional[str]:
              label="test acc")
     ax2.set_ylabel("accuracy (%)")
     lines = ax1.get_lines() + ax2.get_lines()
-    ax2.legend(lines, [l.get_label() for l in lines], loc="best", fontsize=8)
+    ax2.legend(lines, [ln.get_label() for ln in lines], loc="best", fontsize=8)
     ax1.set_title("BPTT training with surrogate gradients", fontsize=10)
     b = _fig_to_b64(fig)
     plt.close(fig)
@@ -190,9 +190,15 @@ def build_report(snn_path: str, out_path: str, epochs: Optional[int] = None,
                  run_training: bool = True, device: str = "cpu",
                  weights: Optional[str] = None,
                  history: Optional[List[Dict[str, float]]] = None) -> str:
-    from .runner import (check_budgets, energy_report, energy_sensitivity,
-                         export_artifacts, measure_sparsity, spike_budget)
     from .backends import runtime as rt
+    from .runner import (
+        check_budgets,
+        energy_report,
+        energy_sensitivity,
+        export_artifacts,
+        measure_sparsity,
+        spike_budget,
+    )
 
     src = open(snn_path, "r", encoding="utf-8").read()
     t0 = time.time()
@@ -430,7 +436,7 @@ def build_report(snn_path: str, out_path: str, epochs: Optional[int] = None,
     h.append(f"<pre><code>{html.escape(result.module_source)}</code></pre></details>")
 
     h.append("<h2>9 · Artifacts</h2><table><tr><th>file</th></tr>")
-    for k, p in paths.items():
+    for _k, p in paths.items():
         if isinstance(p, str) and p.endswith((".py", ".json", ".nir", ".pt")):
             h.append(f"<tr><td><code>{html.escape(os.path.relpath(p, out_dir))}</code></td></tr>")
     h.append("</table>")

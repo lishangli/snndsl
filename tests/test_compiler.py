@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from snndsl import parser as snn_parser
 from snndsl.errors import ParseError, SemaError, SNNError
+from snndsl.passes import live_peak_bytes
 from snndsl.pipeline import compile_source, load_module
-from snndsl.passes import MemoryPlanner, live_peak_bytes
 
 MINIMAL = """
 program tiny
@@ -51,7 +51,7 @@ class TestFrontend(unittest.TestCase):
         src = MINIMAL.replace("program tiny", "program tiny\nconst K = 2 * 3 + 1")
         src = src.replace("dense  h  : 16", "dense  h  : K + 9")
         g = compile_source(src).graph
-        h = [n for n in g.nodes if n.name == "h"][0]
+        h = next(n for n in g.nodes if n.name == "h")
         self.assertEqual(h.shape, (16,))
 
     def test_error_has_line_number(self):
@@ -292,7 +292,6 @@ infer:
             return net, net(x)
 
     def test_membrane_readout_is_not_one_hot(self):
-        import torch
         net, out = self._build("membrane")
         self.assertEqual(tuple(out.shape), (6, 4))
         # every row must have more than one non-zero logit, i.e. real margins
@@ -365,12 +364,53 @@ infer:
         LIF = snn.LIF()
         net = snn.Net("loop", steps=4)
         h = net.input(16)
-        for i in range(5):
+        for _ in range(5):
             h = net.neuron(net.dense(h, 8), LIF)
         net.output(h)
         g = net.compile(quiet=True).graph
         self.assertEqual(sum(1 for n in g.nodes if n.op == "dense"), 5)
         self.assertEqual(sum(1 for n in g.nodes if n.op == "neuron"), 5)
+
+    def test_cli_compiles_a_python_file_like_a_snn_file(self):
+        """`snndsl inspect/build/deploy net.py` must work, not just net.snn.
+
+        Two frontends, one compiler is a claim about the toolchain, not about
+        the API: if the CLI only accepts .snn, the second frontend is a library
+        feature and every downstream command has to be justified twice.
+        """
+        import tempfile
+
+        from snndsl.pipeline import compile_file
+
+        src = (
+            "import snndsl as snn\n"
+            "def build():\n"
+            "    net = snn.Net('smoke', steps=4, readout='membrane')\n"
+            "    LIF = snn.LIF(tau=2.0, v_th=1.0)\n"
+            "    x = net.encode(net.input(1, 28, 28), 'rate', gain=1.0)\n"
+            "    net.output(net.neuron(net.dense(x, 8), LIF))\n"
+            "    return net\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "net.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(src)
+            res = compile_file(path, quiet=True)
+        self.assertEqual([n.op for n in res.graph.nodes][:2], ["input", "encode"])
+        self.assertIn("class SnnNet", res.module_source)
+
+    def test_python_file_without_a_network_says_so(self):
+        import tempfile
+
+        from snndsl.pipeline import compile_file
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "not_a_net.py")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("VALUE = 3\n")
+            with self.assertRaises(SNNError) as ctx:
+                compile_file(path, quiet=True)
+        self.assertIn("exposes no network", str(ctx.exception))
 
     def test_python_frontend_rejects_ann(self):
         import snndsl as snn

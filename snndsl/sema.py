@@ -7,11 +7,10 @@ body is rewritten into Python source that the backends embed verbatim.
 from __future__ import annotations
 
 import math
-import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import ast as A
-from .errors import SemaError, DiagnosticBag
+from .errors import DiagnosticBag, SemaError
 from .ir import IRGraph, IRNode, NeuronSpec, TemporalSpec
 
 MATH_FUNCS = {
@@ -58,7 +57,7 @@ def eval_expr(e: A.Expr, env: Dict[str, Any], what: str = "expression") -> Any:
             return not v
         raise SemaError(f"unsupported unary operator {e.op!r}", line=e.line, col=e.col)
     if isinstance(e, A.BinOp):
-        l = eval_expr(e.left, env, what)
+        l = eval_expr(e.left, env, what)  # noqa: E741 - l/r pair in operator code
         r = eval_expr(e.right, env, what)
         op = e.op
         if op == "+":
@@ -126,7 +125,7 @@ def expr_to_src(e: A.Expr, scope: set) -> str:
             return f"(not {inner})"
         return f"({e.op}{inner})"
     if isinstance(e, A.BinOp):
-        l = expr_to_src(e.left, scope)
+        l = expr_to_src(e.left, scope)  # noqa: E741 - l/r pair in operator code
         r = expr_to_src(e.right, scope)
         op = PY_BINOPS.get(e.op)
         if op is None:
@@ -276,7 +275,6 @@ class Analyzer:
         """
         if any(n.op == "neuron" for n in self.graph.nodes):
             return
-        prod = self.graph.producers()
         analog = [n for n in self.graph.nodes if n.op in ("dense", "conv")]
         if not analog:
             return
@@ -424,7 +422,7 @@ class Analyzer:
         elif len(dims) == 3:
             shape = dims
         elif len(dims) == 2:
-            shape = (1,) + dims
+            shape = (1, *dims)
         else:
             raise SemaError(f"input shape must be 1-D features or (C,H,W), got {dims}",
                             line=layer.line, col=layer.col)

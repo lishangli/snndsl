@@ -9,12 +9,9 @@ These lock in the behaviours that make the deploy check trustworthy:
 """
 from __future__ import annotations
 
-import re
-
 import numpy as np
 import pytest
 import torch
-
 from snndsl import compile_source, load_module
 from snndsl.backends import nir_sim
 from snndsl.backends.nir_export import build_nir_graph, recognise_lif

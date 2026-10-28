@@ -6,9 +6,9 @@
 
 ---
 
-## 1. 六个网络，五种结论（P0-4）
+## 1. 七个网络，五种结论（P0-4）
 
-`snndsl deploy` 分别跑在仓库自带的六个网络上。没有一个结论是"大概率能跑"，
+`snndsl deploy` 分别跑在仓库自带的七个网络上。没有一个结论是"大概率能跑"，
 每条都是可复现的命令行输出。
 
 | 网络 | 结构 | 结论 | 阻断 | 警告 | 实测数值（真实权重，2048 张） |
@@ -18,7 +18,8 @@
 | `adaptive_lif.snn` | ALIF（自适应阈值） | **不可部署** | 2 | 1 | 精度 94.53%→**35.40%**，top-1 一致率 **36.38%** |
 | `residual_snn.snn` | 残差加法合并 | **不可部署** | 1 | 4 | 导不出：NIR 无 merge 原语 |
 | `cifar_hw.snn` | conv→neuron→conv，**max** pool | **不可部署** | 2 | 0 | NIR 无 `MaxPool2d`；若导出成 sum 会把驱动放大 4×（首层发放率 0.02→0.37） |
-| `cifar_hw_avg.snn` | 同上，**avg** pool | **可部署** | 0 | 0 | max\|Δ\|=**0.0**，top-1=100%（4 样本 × 6 步，含三层卷积） |
+| `cifar_hw_avg.snn` | 同上，**avg** pool | **可部署** | 0 | 0 | max\|Δ\|=**0.0**，top-1=100%（4 样本 × 6 步，含三层卷积），第三方复现 0.0 |
+| `mnist_conv.snn` | conv→LIF→avgpool→conv→LIF→dense，**训练后 98.06%** | **可部署** | 0 | 0 | max\|Δ\|=**0.0**，top-1=1.000（8 样本 × 8 步），**第三方逐位复现 0.0** |
 
 > **一处更正**：本文档早前版本写的 "subtract 78.1%" 与 "ALIF 9.4%"，
 > 是在**没有 `--weights` 的情况下测的**——那时 `deploy` 用的是随机初始化网络，
@@ -178,7 +179,28 @@ Linear(256,10) → LIFSqueeze`），说明**文件结构被厂商接受**。
 所以 `deploy` 把它标成 `load-only`（能加载，不宣称数值一致），而不是 `ok`。
 **"能读"和"跑的是同一个东西"是两件事**，报告里分成两列。
 
-### 3.4 依赖地狱是真实存在的（我们自己踩了）
+### 3.4 nirtorch 把 AvgPool2d 映射成了求和池化
+
+`_default_map_avgpool2d` 返回 `torch.nn.LPPool2d(norm_type=1, ...)`。
+Lp 池化的定义是 `(Σ|x|^p)^(1/p)`，`p=1` 时是**窗口和**，不是平均：
+
+```python
+x = torch.full((1,1,4,4), 2.0)
+torch.nn.LPPool2d(1, 2)(x)[0,0,0,0]   # 8.0
+torch.nn.AvgPool2d(2)(x)[0,0,0,0]     # 2.0
+```
+
+2×2 窗口恒差 4 倍。而且 `nir.SumPool2d` 已经映射到同一个算子——
+两个节点指向一个实现，其中一个必然是错的。
+
+这个 bug 的表现最容易被糊过去：`examples/mnist_conv.snn` 上
+`max|Δ| = 0.125`，恰好是 8 步里差 1 个输出脉冲，写成"阈值附近抖动"就过去了。
+真正的定位方式是在每一层挂 forward hook 对比脉冲总数，不是继续调 tolerance。
+
+我们的处理：`snntorch_bridge.avgpool_module()` 自己建 `nn.AvgPool2d`，绕过 `DEFAULT_MAP`。
+修完之后同一个文件、同一批电流，nirtorch 复现我们每个脉冲，`max|Δ| = 0.00e+00`。
+
+### 3.5 依赖地狱是真实存在的（我们自己踩了）
 
 为了接这三个工具链，`pip install rockpool sinabs` 把主环境里的
 `nir` 从 1.0.8 降到 1.0.4、`nirtorch` 从 2.6 降到 2.0.2，
@@ -218,8 +240,10 @@ rockpool modules (Xylo)    SynSense    load-only       已用 rockpool 自己的
 非饱和区间逐脉冲完全一致（524,288 个位置 0 处不同）；真实网络的差异主要来自
 "一步该发几枚脉冲"，而标准对此没有规定。**
 
-**给出"数值一致"的仍然只有 `nirtorch + snnTorch` 这一条**（`rockpool modules` 那条
-在受控条件下也是逐位一致，但它比的是训练实现而不是我们的文件，性质不同，不能合并计数），
+**给出"数值一致"的仍然只有 `nirtorch + snnTorch` 这一条后端**
+（`rockpool modules` 那条在受控条件下也是逐位一致，但它比的是训练实现而不是
+我们的文件，性质不同，不能合并计数）。它现在覆盖两类网络：
+`mnist_hw`（全连接）与 `mnist_conv`（两层卷积）都是 `max|Δ| = 0.00e+00`，
 且其中 `Affine` 的映射由我们接管（上游 `DEFAULT_MAP` 把 bias 赋给了
 `module.weight.bias`，静默丢偏置）。
 
@@ -233,7 +257,7 @@ rockpool modules (Xylo)    SynSense    load-only       已用 rockpool 自己的
 
 | # | 交付物 | 状态 | 说明 |
 |---|---|---|---|
-| P0-1 | 第三方交叉验证 | ✅ | 1024 张真实 MNIST，一致率 100%，`max\|Δ\|=0.0`；顺带抓出 4 个自研 bug + 4 个上游问题 |
+| P0-1 | 第三方交叉验证 | ✅ | 1024 张真实 MNIST，一致率 100%，`max\|Δ\|=0.0`；卷积网同样 0.0；顺带抓出 8 个自研 bug + 4 个上游问题 |
 | P0-2 | 12 场用户访谈 | ❌ **未做** | 需要真人。见下 |
 | P0-3 | `deploy --report` | ✅ | 单文件 HTML，6 节，含"没证明什么" |
 | P0-4 | 三个真实网络部署检查 | ✅ | 实际做了六个，五种不同结论 |

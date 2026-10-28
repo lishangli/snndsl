@@ -26,7 +26,7 @@ def measure_sparsity(model, graph: IRGraph, loader, input_shape,
     total = {}
     n = 0
     with torch.no_grad():
-        for bi, (x, y) in enumerate(loader):
+        for bi, (x, _y) in enumerate(loader):
             if bi >= n_batches:
                 break
             x = rt.adapt_batch(x, input_shape)
@@ -84,9 +84,9 @@ def energy_report(graph: IRGraph, rates: Dict[str, float]) -> Dict[str, Any]:
             "mac_per_sample": fan_in * fan_out,
         })
 
-    ann_macs = sum(l["mac_per_sample"] for l in layers) * steps
-    snn_ac = sum(l["ac_per_sample"] for l in layers if l["event_driven"]) * steps
-    snn_mac = sum(l["mac_per_sample"] for l in layers if not l["event_driven"]) * steps
+    ann_macs = sum(ly["mac_per_sample"] for ly in layers) * steps
+    snn_ac = sum(ly["ac_per_sample"] for ly in layers if ly["event_driven"]) * steps
+    snn_mac = sum(ly["mac_per_sample"] for ly in layers if not ly["event_driven"]) * steps
     e_ann = ann_macs * rt.ENERGY_MAC_PJ
     e_snn = snn_ac * rt.ENERGY_AC_PJ + snn_mac * rt.ENERGY_MAC_PJ
     return {
@@ -115,19 +115,19 @@ def energy_sensitivity(graph: IRGraph, rates: Dict[str, float],
     if not layers:
         return {"sweep": [], "first_layer": None}
     steps = graph.temporal.steps
-    ann_macs = sum(l["mac_per_sample"] for l in layers) * steps
+    ann_macs = sum(ly["mac_per_sample"] for ly in layers) * steps
     e_ann = ann_macs * rt.ENERGY_MAC_PJ
     rows = []
     for r in input_rates:
         ac = 0.0
         mac = 0.0
-        for i, l in enumerate(layers):
+        for i, ly in enumerate(layers):
             if i == 0:
-                ac += r * l["fan_in"] * l["fan_out"]
-            elif l["event_driven"]:
-                ac += l["ac_per_sample"]
+                ac += r * ly["fan_in"] * ly["fan_out"]
+            elif ly["event_driven"]:
+                ac += ly["ac_per_sample"]
             else:
-                mac += l["mac_per_sample"]
+                mac += ly["mac_per_sample"]
         e = (ac * rt.ENERGY_AC_PJ + mac * rt.ENERGY_MAC_PJ) * steps
         rows.append({"first_layer_input_rate": float(r),
                      "snn_energy_nj": e / 1000.0,
@@ -282,7 +282,7 @@ def run_program_from_result(result: CompileResult, out_dir: str = "build",
                 paths["nir_fingerprint"] = rep.get("roundtrip", {}).get("fingerprint", {})
                 log(f"nir       : {len(trained)} tensors embedded, "
                     f"round-trip OK")
-            except Exception as exc:   # noqa: BLE001 - exported artifacts are optional
+            except Exception as exc:   # - exported artifacts are optional
                 paths["nir_error"] = f"{type(exc).__name__}: {exc}"
                 log(f"nir       : could not embed weights - {exc}")
     else:

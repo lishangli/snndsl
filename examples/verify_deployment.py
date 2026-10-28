@@ -8,20 +8,24 @@
 前置：先训练出 build_hw/mnist_hw.pt
     python3 -m snndsl run examples/mnist_hw.snn --out build_hw --epochs 4
 """
-import torch, numpy as np, json
-from snndsl import compile_source, load_module
-from snndsl.backends.nir_export import build_nir_graph
-from snndsl.backends import nir_sim
+import json
 
-res = compile_source(open("examples/mnist_hw.snn").read())
+import torch
+from snndsl import compile_source, load_module
+from snndsl.backends import nir_sim
+from snndsl.backends.nir_export import build_nir_graph
+from snndsl.backends.runtime import build_dataloaders
+
+with open("examples/mnist_hw.snn", encoding="utf-8") as fh:
+    res = compile_source(fh.read())
 g = res.graph
-Net = load_module(res, "build_hw/_verify_net.py"); net = Net()
+Net = load_module(res, "build_hw/_verify_net.py")
+net = Net()
 blob = torch.load("build_hw/mnist_hw.pt", map_location="cpu", weights_only=False)
-net.load_state_dict(blob.get("state_dict", blob)); net.eval()
+net.load_state_dict(blob.get("state_dict", blob))
+net.eval()
 w = {k: v.cpu().numpy() for k, v in net.state_dict().items()}
 
-# 真实测试集
-from snndsl.backends.runtime import build_dataloaders
 cfg = {"data": "mnist", "seed": 0}
 loaders = build_dataloaders(cfg, tuple(g.node(g.inputs[0]).shape), batch_size=100)
 test = loaders["test"] if isinstance(loaders, dict) else loaders[-1]
@@ -39,7 +43,8 @@ for xb, yb in test:
     correct_t += (pt == yb).sum().item()
     correct_n += (pn == yb).sum().item()
     total += yb.numel()
-    if total >= 1000: break
+    if total >= 1000:
+        break
 print(json.dumps({"samples": total,
                   "pytorch_acc": round(correct_t/total,4),
                   "nir_acc": round(correct_n/total,4),

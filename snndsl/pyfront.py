@@ -23,8 +23,7 @@ parser already validates them; only the graph construction becomes Python.
 """
 from __future__ import annotations
 
-import textwrap
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, ClassVar, Dict, Optional, Sequence, Tuple
 
 from . import parser as snn_parser
 from .errors import SNNError
@@ -155,7 +154,7 @@ class Net:
         self._closed = False
 
     # ------------------------------------------------------------- internals
-    _PREFIX = {"input": "x", "encode": "e", "dense": "d", "conv": "c",
+    _PREFIX: ClassVar[Dict[str, str]] = {"input": "x", "encode": "e", "dense": "d", "conv": "c",
                "pool": "p", "flatten": "f", "dropout": "drop", "neuron": "n",
                "add": "add", "concat": "cat", "output": "out"}
 
@@ -330,6 +329,7 @@ class Net:
     def run(self, out_dir: str = "build", **kwargs) -> Dict[str, Any]:
         """Compile, then train/measure exactly like ``snndsl run``."""
         import time as _time
+
         from .runner import run_program_from_result
         t0 = _time.time()
         result = self.compile()
@@ -342,7 +342,7 @@ class Net:
                  f"readout={self.graph.infer.get('readout')}"]
         for n in self.graph.nodes:
             ins = ", ".join(n.inputs) or "-"
-            lines.append(f"  {n.id:<14} {n.op:<8} {str(list(n.shape)):<18} <- {ins}")
+            lines.append(f"  {n.id:<14} {n.op:<8} {list(n.shape)!s:<18} <- {ins}")
         return "\n".join(lines)
 
 

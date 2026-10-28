@@ -7,7 +7,6 @@ can print or render the pipeline.
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import sys
 from dataclasses import dataclass, field
@@ -132,9 +131,58 @@ def compile_source(source: str, filename: str = "<snn>",
 
 
 def compile_file(path: str, **kwargs) -> CompileResult:
+    """Compile either frontend. The extension decides which.
+
+    ``.snn`` is parsed as text; ``.py`` is imported and asked for its network.
+    Two frontends, one compiler is only a claim if both go through the same
+    entry point, so the CLI accepts either and the rest of the toolchain never
+    learns which one it got.
+    """
+    if path.endswith(".py"):
+        return compile_python_file(path, **kwargs)
     with open(path, "r", encoding="utf-8") as fh:
         src = fh.read()
     return compile_source(src, filename=path, **kwargs)
+
+
+def compile_python_file(path: str, **kwargs) -> CompileResult:
+    """Import a Python module and compile the network it exposes.
+
+    The module must offer one of:
+
+    - ``build()`` — a zero-argument callable returning ``snndsl.Net``;
+    - a module-level ``net`` object.
+
+    Anything else is a modelling error, not a crash, so it says what it wanted.
+    """
+    if not os.path.exists(path):
+        raise SNNError(f"no such file: {path}")
+    here = os.path.dirname(os.path.abspath(path))
+    added = here not in sys.path
+    if added:
+        sys.path.insert(0, here)
+    try:
+        mod_name = f"snn_frontend_{abs(hash(os.path.abspath(path))) & 0xFFFFFFF}"
+        spec = importlib.util.spec_from_file_location(mod_name, path)
+        if spec is None or spec.loader is None:
+            raise SNNError(f"cannot import {path} as a Python module")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = mod
+        spec.loader.exec_module(mod)
+    finally:
+        if added:
+            sys.path.remove(here)
+
+    net = getattr(mod, "net", None)
+    builder = getattr(mod, "build", None)
+    if callable(builder):
+        net = builder()
+    if net is None or not hasattr(net, "compile"):
+        raise SNNError(
+            f"{os.path.basename(path)} exposes no network",
+            hint="expose either a module-level `net` or a zero-argument "
+                 "`build()` that returns snndsl.Net")
+    return net.compile(**kwargs)
 
 
 def load_module(result: CompileResult, path: Optional[str] = None,

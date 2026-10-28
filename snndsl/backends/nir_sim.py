@@ -119,9 +119,9 @@ def _to_state(p: torch.Tensor, like: torch.Tensor) -> torch.Tensor:
         return p.reshape(like.shape)
     if like.dim() > 1 and p.numel() == int(np.prod(like.shape[1:])):
         # activation carries a batch dim the parameters do not describe
-        return p.reshape((1,) + tuple(like.shape[1:])).expand_as(like)
+        return p.reshape(1, *like.shape[1:]).expand_as(like)
     if like.dim() > 1 and p.numel() == like.shape[-1]:
-        return p.reshape(*([1] * (like.dim() - 1)), p.numel()).expand_as(like)
+        return p.reshape(1, *like.shape[1:]).expand_as(like)
     raise ValueError(
         f"neuron parameter of size {p.numel()} cannot be aligned with "
         f"activation {tuple(like.shape)}")
@@ -322,7 +322,6 @@ def readout(nir_graph: Any, sim: Dict[str, Any], mode: str = "spikes") -> torch.
     at 0.875 on an MNIST net that is in fact identical — so the aggregation lives
     here, once, and both the verifier and the report use it.
     """
-    src = None
     stream = output_stream(nir_graph, sim, mode)
     if stream is not None:
         return stream.mean(0)

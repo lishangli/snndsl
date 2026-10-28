@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software in academic work, please cite it as below."
+title: "snndsl: a domain-specific language and compiler for spiking neural networks"
+abstract: >-
+  A compiler that takes one description of a spiking neural network and emits
+  both PyTorch training code and NIR for neuromorphic hardware, together with
+  the tooling to check whether the two agree numerically and whether third-party
+  frontends can actually read the result.
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/lishangli/snndsl"
+url: "https://github.com/lishangli/snndsl"
+version: 0.2.0
+date-released: "2025-10-29"
+keywords:
+  - spiking neural networks
+  - neuromorphic computing
+  - compiler
+  - domain-specific language
+  - NIR
+  - PyTorch
+authors:
+  - name: "snndsl contributors"

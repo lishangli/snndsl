@@ -8,7 +8,7 @@ T) based on the ``schedule`` pass.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from ..ir import IRGraph, IRNode
 
@@ -315,7 +315,7 @@ class TorchCodeGen:
                        + (" [direct input]" if direct else ""))
         self.emit(ind, f"_st = st[\"{n.id}\"]")
         # constants first so the body reads like the DSL source
-        self.emit(ind, f"dt = self.DT")
+        self.emit(ind, "dt = self.DT")
         self.emit(ind, f"t = {t_expr}")
         for p, v in spec.params.items():
             self.emit(ind, f"{p} = {float(v)!r}")

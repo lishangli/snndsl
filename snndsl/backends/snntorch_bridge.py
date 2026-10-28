@@ -14,6 +14,14 @@ than by reading the docs:
     ``module.weight.bias = ...`` — an attribute on the weight tensor, not on the
     module. It silently discards every bias. Graphs still load, still run, and
     are quietly wrong.
+
+``AVGPOOL_OVERRIDE``
+    ``nir.AvgPool2d`` is mapped to ``torch.nn.LPPool2d(norm_type=1, ...)``,
+    whose output is ``(sum |x|)^(1/1)`` — a *sum* over the window, not an
+    average. On a 2x2 window that multiplies the drive by four, so a conv graph
+    cross-checked against nirtorch disagreed on 1 output spike in 8 steps and
+    looked like a rounding tie. Measured: ``LPPool2d(1)`` returns 8.0 where
+    ``AvgPool2d`` returns 2.0 on a constant 2.0 input.
 """
 from __future__ import annotations
 
@@ -125,6 +133,31 @@ def linear_module(node: Any) -> nn.Module:
     return module
 
 
+def avgpool_module(node: Any) -> nn.Module:
+    """Rebuild an average pool ourselves - see ``AVGPOOL_OVERRIDE`` above."""
+    k = node.kernel_size
+    s = node.stride
+    p = getattr(node, "padding", 0)
+    k = (int(k), int(k)) if np.isscalar(k) else tuple(int(v) for v in k)
+    s = k if s is None else ((int(s), int(s)) if np.isscalar(s) else tuple(int(v) for v in s))
+    p = (int(p), int(p)) if np.isscalar(p) else tuple(int(v) for v in p)
+    return nn.AvgPool2d(kernel_size=k, stride=s, padding=p)
+
+
+def reset_states(net: nn.Module) -> None:
+    """Zero the membrane of every snnTorch neuron under ``net``.
+
+    Feeding samples one at a time through a stateful graph carries the previous
+    sample's membrane into the next one. That is correct for a streaming chip
+    and wrong for a per-sample comparison, and it showed up as exactly one
+    output spike in eight differing between nirtorch and this project.
+    """
+    for module in net.modules():
+        mem = getattr(module, "mem", None)
+        if torch.is_tensor(mem):
+            module.mem = torch.zeros_like(mem)
+
+
 def make_map(dt: float, log: Optional[List[dict]] = None):
     """Build a nirtorch model_map that delegates everything it can.
 
@@ -143,11 +176,18 @@ def make_map(dt: float, log: Optional[List[dict]] = None):
             return affine_module(node)
         if kind == "Linear":
             return linear_module(node)
+        if kind == "AvgPool2d":
+            return avgpool_module(node)
         if kind in NEURON_TYPES:
             return build_neuron(node, dt, log, kind)
-        try:
-            return DEFAULT_MAP(node)
-        except Exception:                # noqa: BLE001
+        # ``DEFAULT_MAP`` is a *dict keyed by node type*, not the callable older
+        # nirtorch releases accepted. Calling it raised ``TypeError`` which the
+        # blanket except turned into ``NotImplementedError(kind)``, so every
+        # unmapped op - ``Flatten``, ``AvgPool2d``, ``Conv2d`` - looked like an
+        # upstream gap. It was this line.
+        factory = DEFAULT_MAP.get(type(node))
+        if factory is None:
             raise NotImplementedError(kind)
+        return factory(node)
 
     return mapper

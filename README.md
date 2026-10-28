@@ -1,5 +1,11 @@
 # snndsl — 脉冲神经网络的领域特定语言与编译器
 
+[![CI](https://github.com/lishangli/snndsl/actions/workflows/ci.yml/badge.svg)](https://github.com/lishangli/snndsl/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![tests](https://img.shields.io/badge/tests-70%20passed%20%2F%204%20skipped-brightgreen)](tests/)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![version](https://img.shields.io/badge/version-0.2.0-informational)](CHANGELOG.md)
+
 用两种前端描述脉冲神经网络（拓扑、神经元动力学、时间语义、训练配方、部署预算）：
 一份声明式文本 `.snn`，或直接写 Python。两者编译成**同一个静态 SNN IR**，
 经过优化后降级为可执行的 PyTorch 模块，并能导出 NIR 直接对接神经形态硬件
@@ -24,11 +30,14 @@
 同一份文件换个目标为什么不一样（三处规范缺口 + 实测）：**[`docs/SEMANTICS.md`](docs/SEMANTICS.md)**。
 用户访谈怎么问、什么结果算失败：**[`docs/INTERVIEW_KIT.md`](docs/INTERVIEW_KIT.md)**。
 一份能直接发给别人的部署报告：[`docs/deploy_report_mnist.html`](docs/deploy_report_mnist.html)。
+**还差什么、算谁的账**：[`docs/GAPS.md`](docs/GAPS.md)——缺口登记表，每条附验证命令。
+改了什么、撤回了什么：[`CHANGELOG.md`](CHANGELOG.md)。怎么贡献：[`CONTRIBUTING.md`](CONTRIBUTING.md)。
 
 ## 1. 快速开始
 
 ```bash
 pip install -e ".[full]"
+snndsl doctor                                     # 这台机器上哪些部分真的能用
 
 snndsl inspect examples/mnist_membrane.snn        # 看 IR、形状、优化报告
 snndsl build   examples/mnist_membrane.snn        # 编译出 .py + .ir.json + .nir
@@ -66,7 +75,15 @@ out["spikes_per_layer"]   # 每层发放率与脉冲数
 
 ## 2. Python 嵌入前端
 
-同一个网络，用 Python 写。适合需要循环、条件、函数复用的真实工程：
+同一个网络，用 Python 写。适合需要循环、条件、函数复用的真实工程。
+**两个前端走同一条命令**：文件是 `.py` 时 CLI 会导入它、取其中的网络，
+后面所有子命令（`inspect` / `build` / `run` / `deploy` / `report`）完全一样。
+
+```bash
+snndsl inspect examples/mnist_py.py     # 与 inspect examples/*.snn 等价
+```
+
+模块需要暴露一个零参数的 `build()` 或模块级 `net`；两者都没有时报错会直接说清楚。
 
 ```python
 import snndsl as snn
@@ -581,6 +598,7 @@ snndsl infer examples/mnist_membrane.snn --weights build_mem/mnist_membrane.pt -
 | `examples/cifar_cnn.snn` | conv / max-pool / flatten、per-layer scale、flatten 融合 |
 | `examples/cifar_hw.snn` | 同上换 zero reset，**max pool 导致不可部署**（NIR 无 `MaxPool2d`） |
 | `examples/cifar_hw_avg.snn` | 只把池化换成 avg，**卷积网全链路逐位一致**（`max\|Δ\|=0.0`） |
+| `examples/mnist_conv.snn` | **两层卷积、训练后 98.06%**，自己仿真与第三方都 0 误差 |
 | `examples/adaptive_lif.snn` | 自定义神经元：双状态变量 + 自适应阈值 + atan 代理梯度 |
 | `examples/residual_snn.snn` | DAG 分支 + `add` 合并 + direct_input pass |
 | `examples/mnist_py.py` | **Python 前端**：`net.dense(...)` 构建同一网络，`--layers N` 用循环展开 |
@@ -591,8 +609,9 @@ snndsl infer examples/mnist_membrane.snn --weights build_mem/mnist_membrane.pt -
 ## 9. 测试
 
 ```bash
-python -m unittest discover -s tests -v   # 核心编译器
-python -m pytest tests/ -q               # 全量，50 tests
+python -m pytest -q                       # 73 passed, 4 skipped
+python -m pytest --cov=snndsl             # 覆盖率
+python -m ruff check snndsl tests examples
 ```
 
 覆盖：词法/语法错误定位、常量折叠、形状推断、SSA 重绑定、DCE、buffer 复用、
@@ -611,7 +630,19 @@ round-trip 必须能发现丢失的字段、**校验器读的必须是磁盘文�
 零权重文件必须被判"空壳"而不是"一致"、**恒定输出必须判无效比较**、
 第三方后端必须复现我们每一个脉冲。
 
+NIR → snnTorch 桥（`tests/test_bridge.py`，5 个）：每条都锁一个"能加载、能跑、
+数字是错的"的缺陷——未映射算子必须落到 nirtorch 的 `DEFAULT_MAP`、
+未知算子仍须抛错、**平均池化不能是求和**、多维神经元参数必须报错而不是被平均、
+逐样本探测必须清零膜电位。
+
+4 个跳过的是厂商探针（sinabs / rockpool），它们把 `nir` 钉在 1.0.4，
+必须装进独立解释器再 `export SNNDSL_VENDOR_PYTHON=...`，做法见 `CONTRIBUTING.md`。
+
 ## 10. 局限（明确写下）
+
+> 这一节是结论，不是清单。**持续维护的缺口登记表在 [`docs/GAPS.md`](docs/GAPS.md)**：
+> 每条缺口都标了归属（我们的 bug / 上游的 bug / 标准的空白）和一条能当场跑的命令。
+> 归属很重要——这个项目已经三次把自己的缺陷写成别人的问题，每次看上去都很专业。
 
 - 只实现了前馈 + 残差类 DAG：**无循环突触/延迟**，因此不支持真正的时间递归 SNN
   （EventProp 类方法）。`nir.Delay` 已在导出层预留位置。
@@ -642,8 +673,13 @@ round-trip 必须能发现丢失的字段、**校验器读的必须是磁盘文�
 - **`subtract` reset 无法精确表达**：NIR 只有固定 `v_reset`。实测差异在大驱动下可达
   17% 的脉冲率偏差。zero reset 是逐位精确的，所以 `examples/mnist_hw.snn` 用它。
   代价是 4 epoch 精度 94.81%，低于 subtract 版的 97.21%（后者不可无损部署）。
-- 第三方交叉验证只用了一个后端组合（NIRTorch + snnTorch）。再加一个（Nengo 或 Lava）
-  会更强。
+- 第三方交叉验证只用了一个后端组合（NIRTorch + snnTorch），它现在同时覆盖全连接与
+  卷积两类网络（都是 `max|Δ| = 0.00e+00`），但**仍然只是一个后端**。再加一个
+  （Nengo 或 Lava）会更强。
+- **跨后端的对照只做到 Python 神经元这一层**：`nirtorch` 自己的 `AvgPool2d` 映射
+  把平均池化实现成了求和（2×2 窗口恒差 4 倍），我们只能在自己的桥接层绕开它。
+  这类"映射表里有、语义不对"的问题，只有当有人逐层对过脉冲才会暴露——
+  本项目的 `deploy --targets` 就是为此存在的。
 
 ## 11. 目录
 
@@ -662,6 +698,30 @@ snndsl/
 │   ├── torch_codegen.py IR → PyTorch 源码
 │   └── nir_export.py    IR → NIR
 ├── runner.py            训练+稀疏度+能耗+预算校验
+├── infer.py             部署后端：predict / 逐层发放率 / 延迟基准
+├── deploy.py            部署分析：静态阻断 + 数值等价 + 外部工具链
+├── deploy_html.py       单文件 HTML 部署报告（内联 SVG，无脚本无外链）
 ├── report.py            单文件 HTML 编译报告
-└── cli.py               命令行入口
+└── cli.py               命令行入口（build/run/inspect/infer/export/report/deploy/doctor）
 ```
+
+`backends/` 里还有四个文件是部署侧的核心，读代码从它们开始：
+
+| 文件 | 作用 |
+|---|---|
+| `nir_export.py` | IR → NIR：写盘后回读自证、方言降级、`strict` 拒绝空壳 |
+| `nir_sim.py` | 独立的 NIR 参考解释器：逐位复现、readout、输出脉冲流 |
+| `targets.py` | 厂商探针：nirtorch / sinabs / rockpool，各自跑在独立子进程 |
+| `snntorch_bridge.py` | NIR → snnTorch 的映射，三处上游陷阱的绕行都在这里 |
+
+文档：
+
+| 文件 | 内容 |
+|---|---|
+| `docs/WHY.md` | 为什么需要编译层，与已有项目的差异 |
+| `docs/ECOSYSTEM.md` | 生态位，含真实 GitHub 数据 |
+| `docs/GAPS.md` | 缺口登记表：归属、状态、验证命令 |
+| `docs/SEMANTICS.md` | 三处规范缺口 + 实测 |
+| `docs/P0_DEPLOY_MATRIX.md` | 七个网络的部署结论 |
+| `docs/UPSTREAM_ISSUES.md` | 四条可提交的上游 issue（含一条撤回记录） |
+| `docs/ROADMAP.md` | 阶段、验收标准、证伪条件 |

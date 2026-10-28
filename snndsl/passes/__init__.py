@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List
 
-from ..ir import IRGraph, IRNode
+from ..ir import IRGraph, IRNode  # noqa: F401 - re-exported for pass modules
 
 
 @dataclass

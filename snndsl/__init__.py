@@ -7,12 +7,12 @@ Quick start
 >>> Net = load_module(res, "build/net.py")
 >>> model = Net()
 """
-from .errors import SNNError, Diagnostic, DiagnosticBag
+from .errors import Diagnostic, DiagnosticBag, SNNError
 from .ir import IRGraph, IRNode, NeuronSpec, TemporalSpec
 from .pipeline import CompileResult, compile_file, compile_source, load_module
 from .pyfront import ALIF, IF, LIF, Net, Neuron, Tensor, custom, net
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "SNNError", "Diagnostic", "DiagnosticBag", "IRGraph", "IRNode",
     "NeuronSpec", "TemporalSpec", "CompileResult", "compile_file",

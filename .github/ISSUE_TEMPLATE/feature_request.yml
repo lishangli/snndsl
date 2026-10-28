@@ -1,0 +1,44 @@
+name: Feature request
+description: A network construct, a neuron model, or a deployment target that is missing
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is a compiler, so "support X" usually means one of three
+        different things: the frontend cannot express it, the IR cannot represent
+        it, or a backend cannot emit it. Saying which one you hit shortens the
+        conversation a lot.
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Where is the gap
+      options:
+        - the .snn / Python frontend cannot express it
+        - the IR has no representation for it
+        - optimisation passes mishandle it
+        - the PyTorch backend cannot emit it
+        - the NIR export cannot represent it (and the standard may be the reason)
+        - a vendor toolchain cannot consume the output
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What you are trying to build
+      description: >
+        The network and the target device. "A 3-layer ALIF network on Xylo" is
+        more useful than "ALIF support".
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What happens today
+      description: The error, the blocker message, or the wrong number.
+      render: shell
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround, if you found one
+      description: Even a bad one. It tells us which part is load-bearing.

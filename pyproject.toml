@@ -1,13 +1,39 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "snndsl"
-version = "0.1.0"
-description = "A domain specific language and compiler for spiking neural networks"
+description = "A domain specific language and compiler for spiking neural networks: one program, compiled to PyTorch training and to NIR neuromorphic hardware"
 readme = "README.md"
+dynamic = ["version"]
+license = { file = "LICENSE" }
 requires-python = ">=3.9"
+authors = [{ name = "snndsl contributors" }]
+keywords = [
+    "spiking-neural-networks",
+    "neuromorphic",
+    "compiler",
+    "dsl",
+    "nir",
+    "pytorch",
+    "snn",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Compilers",
+    "Typing :: Typed",
+]
 dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
@@ -15,9 +41,78 @@ torch = ["torch>=2.0", "torchvision>=0.15"]
 nir = ["nir>=1.0"]
 report = ["matplotlib>=3.7"]
 full = ["torch>=2.0", "torchvision>=0.15", "nir>=1.0", "matplotlib>=3.7"]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.5",
+    "build>=1.0",
+    "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/lishangli/snndsl"
+Documentation = "https://github.com/lishangli/snndsl/tree/main/docs"
+Repository = "https://github.com/lishangli/snndsl"
+Issues = "https://github.com/lishangli/snndsl/issues"
+Changelog = "https://github.com/lishangli/snndsl/blob/main/CHANGELOG.md"
 
 [project.scripts]
 snndsl = "snndsl.cli:main"
 
+[tool.setuptools.dynamic]
+version = { attr = "snndsl.__version__" }
+
 [tool.setuptools.packages.find]
 include = ["snndsl*"]
+
+[tool.setuptools.package-data]
+snndsl = ["py.typed"]
+
+# ---------------------------------------------------------------- tooling ---
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error::DeprecationWarning:snndsl.*"]
+
+[tool.coverage.run]
+source = ["snndsl"]
+omit = ["snndsl/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["snndsl", "tests", "examples"]
+
+[tool.ruff.lint]
+# E/F/W: pycodestyle + pyflakes, I: import order, B: bugbear, C4: comprehensions,
+# RUF: ruff's own. ``UP`` and ``SIM`` are deliberately out: they mainly rewrite
+# ``typing.List`` into ``list`` and collapse equivalent branches, which is churn
+# in a codebase that still supports 3.9 and gains nothing at runtime.
+select = ["E", "F", "W", "I", "B", "C4", "RUF"]
+ignore = [
+    "E501",   # long lines carry measured numbers and terminal output on purpose
+    "B008",   # argparse defaults
+    "RUF001", # full-width punctuation inside Chinese docstrings
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"examples/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+files = ["snndsl"]

@@ -27,18 +27,16 @@ import json
 import os
 import sys
 
+import nir
+import nirtorch
 import numpy as np
+import snntorch as snn
 import torch
 import torch.nn as nn
 
-import nir
-import nirtorch
-import snntorch as snn
-
-from snndsl import compile_source, load_module
-
 # NIRTorch's own mappings for the non-spiking layers.
 from nirtorch.nir_interpreter import DEFAULT_MAP
+from snndsl import compile_source, load_module
 
 NEURON_TYPES = (nir.LIF, nir.LI, nir.IF)
 

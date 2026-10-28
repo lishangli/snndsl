@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A deployment result you cannot explain
+    url: https://github.com/lishangli/snndsl/blob/main/docs/SEMANTICS.md
+    about: >
+      Three places where the NIR standard is ambiguous, with measurements.
+      Read this before filing: the answer may be "the standard does not say".
+  - name: A limitation you hit
+    url: https://github.com/lishangli/snndsl/blob/main/docs/GAPS.md
+    about: >
+      The gap register: every missing link this project knows about, its status,
+      and the command that demonstrates it.

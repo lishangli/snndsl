@@ -16,10 +16,9 @@ from __future__ import annotations
 import math
 import os
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -358,7 +357,6 @@ def count_parameters(model: nn.Module) -> int:
 
 
 # --------------------------------------------------------- post-training quant
-import copy as _copy
 
 
 @torch.no_grad()
