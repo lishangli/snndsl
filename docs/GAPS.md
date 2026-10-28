@@ -29,6 +29,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 15 | 12 场用户访谈 | **外部** | 未做 · 工具包已备 |
 | 16 | `build` 要 torch 才能写文件 | **我们的** | 已关闭 · numpy-only 下通过 |
 | 17 | `nir_sim` 拿 torch 当张量库 | **我们的** | 开着 · `--verify` 需要 PyTorch |
+| 18 | `[full]` 缺 nirtorch / snntorch，第三方对照静默跳过 | **我们的** | 已关闭 · CI 里真跑 |
 
 ---
 
@@ -97,6 +98,24 @@ python -m pytest tests/test_bridge.py -q      # 5 passed
 
 ```bash
 python -m snndsl.cli export examples/mnist_hw.snn -o /tmp/x.nir   # 写盘即回读自证
+```
+
+### 18 · `[full]` 缺 nirtorch / snntorch —— 我们的 bug
+
+这是"自证"和"他证"之间最容易糊弄过去的一条。README 说第三方后端必须复现我们的
+每一个脉冲，而 `pip install -e ".[full]"` 装不到 `nirtorch` 和 `snntorch`——
+探针于是返回 `not-installed`，测试跳过，一切看起来正常。**一个从没跑过的对照，
+和一次通过的对照，在输出里长得一样。**
+
+CI 第一次真正跑起来时暴露了它：四个 full job 全红，而失败信息只有一句
+`not installed in this interpreter`，缺的是哪个包一个字没提。两处都改了：
+
+- `[full]` 现在带 `nirtorch>=2.0` 和 `snntorch>=0.9`（都不进 `[nir]`，那个 extra
+  是 numpy-only job 用来证明核心不依赖 torch 的）；
+- `_explain()` 把 `No module named 'x'` 里的 `x` 带进结论。
+
+```bash
+python -m pytest tests/test_targets.py -q -k third_party   # 现在是真跑，不是 skip
 ```
 
 ### 16 · `build` 要 torch 才能写文件 —— 我们的 bug

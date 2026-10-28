@@ -476,6 +476,11 @@ Affine/Conv/Pool/Flatten）。遇到它不建模的节点（如 `Delay`）会直
 | 神经元的积分、阈值、复位 | `snnTorch` 的 `snn.Leaky` 1.0.0 |
 | 参数换算 | 本项目（`beta = 1 - dt/tau`、驱动增益 `dt/tau*r`） |
 
+前置条件是 `pip install -e ".[full]"`：缺 `nirtorch` 或 `snntorch` 时，
+`deploy --targets` 不会假装通过，而是报
+`not installed in this interpreter: snntorch`。这条信息本身就是 0.2.1 修出来的——
+在此之前缺哪个包都只说"not installed"，等于没说，而缺依赖的探针会被读成"跑过了"。
+
 ```bash
 $ python3 examples/cross_validate.py
 --- third-party cross-validation ---
