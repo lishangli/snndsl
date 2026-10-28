@@ -2,7 +2,8 @@
 build/
 build_*/
 
-# 数据集
+# 数据集（本地软链，不入库）
+/data
 data/
 
 # Python
