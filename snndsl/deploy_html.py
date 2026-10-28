@@ -295,7 +295,8 @@ def _render(**kw: Any) -> str:
         verdict, big = "bad", f"NOT DEPLOYABLE · {n} 个阻断项"
         blurb = first + "。"
         if kw["export_error"]:
-            blurb += "因此这份文件导不出来（这不是导出器坏了，是标准表达不了）。"
+            blurb += ("因此这份文件导不出来（原因见上面的阻断项；把原因归给标准之前，"
+                      "先确认不是导出器自己没做到）。")
     elif kw["export_error"]:
         verdict, big, blurb = ("bad", "EXPORT FAILED",
                                f"导不出一个可读的 .nir：{kw['export_error']}")

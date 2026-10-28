@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
 import pytest
 import torch
 
@@ -188,3 +189,60 @@ def test_simulator_reports_unknown_nodes():
     )
     with pytest.raises(nir_sim.NIRSimError):
         nir_sim.simulate(g, torch.zeros(1, 2), steps=2)
+
+
+# ------------------------------------------------- convolutional deployment
+
+CONV_AVG = "examples/cifar_hw_avg.snn"
+CONV_MAX = "examples/cifar_hw.snn"
+
+
+def test_convolutional_snn_is_deployable_and_bit_exact():
+    """conv -> LIF -> pool -> conv -> dense round-trips through NIR exactly.
+
+    Regression guard for a wrong call made in the other direction: the exporter
+    used to write neuron parameters as a flat ``(C*H*W,)`` vector, which made a
+    ``(C,H,W)`` activation fail NIR's shape inference, and ``deploy`` then
+    reported *every* conv SNN as blocked - attributing to the standard a
+    limitation that was only our own flattening. A NIR neuron derives its
+    ``input_type`` from the shape of its parameter array, so per-element
+    parameters of rank 3 are legal, and the full convolutional graph is exact.
+    """
+    res, net = _compile(open(CONV_AVG).read(), "convavg")
+    rep = analyze(res.graph)
+    assert rep.deployable, [f.message for f in rep.blockers]
+
+    torch.manual_seed(0)
+    x = torch.rand(4, 3, 32, 32)
+    out = verify(res.graph, net, x, weights=_weights(net))
+    assert out["max_abs_error"] == 0.0, out
+    assert out["top1_agreement"] == 1.0
+
+
+def test_max_pooling_is_the_real_blocker_for_conv_snns():
+    """NIR 1.0.x has AvgPool2d and SumPool2d, no MaxPool2d.
+
+    Exporting a max pool as sum pooled the 2x2 windows and multiplied the drive
+    by four; the first layer's spike rate went 0.02 -> 0.37. That is a different
+    network, so it has to block rather than warn.
+    """
+    res = compile_source(open(CONV_MAX).read())
+    rep = analyze(res.graph)
+    assert not rep.deployable
+    assert any(f.code == "max-pool" for f in rep.blockers)
+
+
+def test_neuron_parameters_keep_the_activation_rank():
+    """The exported LIF must carry (C,H,W) parameters, not a flattened vector.
+
+    Element count is identical either way - only the rank differs - so this
+    costs no bytes and is the single change that makes conv SNNs deployable.
+    """
+    res = compile_source(open(CONV_AVG).read())
+    graph, _ = build_nir_graph(res.graph, None)
+    conv_neurons = [
+        n for n in graph.nodes.values()
+        if type(n).__name__ == "LIF" and np.asarray(n.tau).ndim == 3
+    ]
+    assert conv_neurons, "expected at least one rank-3 LIF parameter array"
+    assert all(np.asarray(n.tau).size > 1 for n in conv_neurons)

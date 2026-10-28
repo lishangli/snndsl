@@ -158,6 +158,48 @@ TypeError: LIF.__init__() got an unexpected keyword argument 'v_reset'
 
 ---
 
+## Issue 4 · nirtorch 的默认映射没有 `Flatten`
+
+### 复现（最小图，不依赖任何模型）
+
+```python
+import nir, numpy as np
+
+g = nir.NIRGraph.from_list(
+    nir.Input(input_type={"input": np.array([16])}),
+    nir.Flatten(input_type={"input": np.array([16])}),
+    nir.Linear(weight=np.zeros((3, 16), dtype=np.float32)),
+    nir.Output(output_type={"output": np.array([3])}),
+)
+nir.write("/tmp/flat.nir", g)
+
+import nirtorch
+nirtorch.nir_to_torch(nir.read("/tmp/flat.nir"))
+```
+
+### 实际
+
+`NotImplementedError: Flatten`
+
+### 预期
+
+映射到 `torch.flatten` 就是一行。`Flatten` 从 NIR 1.0 起就在标准里，
+而且在任何视觉网络上必然出现——`conv -> flatten -> linear` 是标准分类头。
+
+### 影响
+
+这是目前最难受的一条，因为它恰好卡在**验证链的最后一环**：
+
+`examples/cifar_hw_avg.snn` 导出后，我们自己的参考解释器给出
+`max|Δ| = 0.0`、top-1 一致率 1.000；但第三方只能用 `nirtorch`，
+而它读不了带 `Flatten` 的图。于是卷积网的结论**只有自证，没有他证**——
+这正好是 P0-1 当初要消灭的状态。
+
+换句话说：全连接网我们已经证明"第三方能跑出一样的脉冲"，
+卷积网目前只能证明"我们自己能"，两者不能混着说。
+
+---
+
 ## 提交后跟进
 
 | 结果 | 对我们的影响 |

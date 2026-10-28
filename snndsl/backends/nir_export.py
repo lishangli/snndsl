@@ -160,9 +160,17 @@ class NIRShapeError(ValueError):
 
 
 def _flatten_node(shape) -> Any:
-    """A NIR Flatten with its types filled in at construction time."""
+    """A NIR Flatten with its types filled in at construction time.
+
+    ``start_dim=0`` because NIR's Conv2d and neuron layers treat their shape as
+    the *whole* activation (no batch dim: ``input_type`` for a conv is (C,H,W)),
+    while ``Flatten`` defaults to ``start_dim=1`` as if dim 0 were a batch. With
+    the default, flattening (128, 64) yields (128, 64) instead of (8192,) and the
+    following Linear fails shape inference. ``NIRGraph`` re-runs ``infer_types``
+    on construction, so the output type cannot simply be overwritten afterwards.
+    """
     ins = [int(v) for v in shape]
-    node = nir.Flatten(start_dim=1, end_dim=-1, input_type={"input": np.array(ins)})
+    node = nir.Flatten(start_dim=0, end_dim=-1, input_type={"input": np.array(ins)})
     node.output_type = {"output": np.array([int(np.prod(ins))])}
     return node
 
@@ -282,7 +290,22 @@ def build_nir_graph(graph: IRGraph,
         elif n.op == "pool":
             k = n.attrs["kernel"]
             s = n.attrs["stride"]
-            cls = nir.AvgPool2d if n.attrs.get("kind", "avg") == "avg" else nir.SumPool2d
+            kind = str(n.attrs.get("kind", "avg"))
+            if kind == "max":
+                # NIR 1.0.x defines AvgPool2d and SumPool2d only - there is no
+                # max pooling. This used to fall into the else branch below and
+                # become a *sum* pool, which multiplies the drive by the kernel
+                # area: on examples/cifar_hw.snn the first conv layer's spike
+                # rate went 0.02 -> 0.37 and the output was 7x off. Average keeps
+                # the magnitude comparable but is still not max, so record it as
+                # unsupported and let `deploy` refuse to call the result equal.
+                report["unsupported"].append(
+                    {"node": nid, "op": "pool(max)",
+                     "reason": "NIR has no MaxPool2d; written as AvgPool2d, "
+                               "which is not equivalent"})
+                cls = nir.AvgPool2d
+            else:
+                cls = nir.AvgPool2d if kind == "avg" else nir.SumPool2d
             nodes[nid] = cls(kernel_size=np.array([k, k]), stride=np.array([s, s]),
                              padding=np.array([0, 0]))
             report["nodes"][nid] = cls.__name__
@@ -295,20 +318,18 @@ def build_nir_graph(graph: IRGraph,
             n_units = 1
             for d in n.shape:
                 n_units *= int(d)
-            if len(tuple(n.shape)) > 1:
-                # NIR's neuron layers derive their type from a 1-D per-neuron
-                # parameter array, so a (C,H,W) activation cannot connect to
-                # one. There is no Unflatten/Reshape in NIR 1.0.8 to restore
-                # the spatial dims afterwards either, so `conv -> neuron ->
-                # conv` is not expressible. Say it here rather than writing a
-                # file that nir.read() will refuse.
-                report.setdefault("shape_blocked", []).append(
-                    {"node": nid, "shape": list(int(v) for v in n.shape),
-                     "reason": "NIR neuron layers are 1-D; no Reshape exists to "
-                               "restore spatial dims"})
+            # NIR derives a neuron's ``input_type`` from the *shape of its
+            # parameter array* (``LIF.__post_init__`` sets
+            # ``input_type = {"input": np.array(r.shape)}``), so the parameters
+            # must carry the activation's own shape. Writing a flattened
+            # ``(n_units,)`` vector instead makes a (C,H,W) neuron look like a
+            # 1-D layer of C*H*W units, and shape inference then rejects the
+            # following Conv2d. The element count is identical either way - only
+            # the rank differs - so keeping the shape costs no bytes.
+            shape = tuple(int(v) for v in n.shape) or (1,)
             if lif is None:
-                nodes[nid] = nir.LI(tau=np.full(n_units, 2.0), r=np.ones(n_units),
-                                    v_leak=np.zeros(n_units))
+                nodes[nid] = nir.LI(tau=np.full(shape, 2.0), r=np.ones(shape),
+                                    v_leak=np.zeros(shape))
                 report["nodes"][nid] = "LI(approx)"
                 report["approximated"].append(
                     {"node": nid, "reason": "neuron model is not a plain LIF; "
@@ -326,11 +347,11 @@ def build_nir_graph(graph: IRGraph,
                 # deploys losslessly (see docs) — stays readable everywhere.
                 zero_reset = abs(float(lif["v_reset"])) < 1e-12
                 nodes[nid] = nir.LIF(
-                    tau=np.full(n_units, lif["tau"]),
-                    r=np.full(n_units, lif["r"]),
-                    v_leak=np.full(n_units, lif["v_leak"]),
-                    v_threshold=np.full(n_units, lif["v_threshold"]),
-                    v_reset=None if zero_reset else np.full(n_units, lif["v_reset"]),
+                    tau=np.full(shape, lif["tau"]),
+                    r=np.full(shape, lif["r"]),
+                    v_leak=np.full(shape, lif["v_leak"]),
+                    v_threshold=np.full(shape, lif["v_threshold"]),
+                    v_reset=None if zero_reset else np.full(shape, lif["v_reset"]),
                     metadata={"snndsl_reset": lif["reset_mode"],
                               "snndsl_v_reset": float(lif["v_reset"]),
                               "snndsl_reset_omitted": zero_reset})
@@ -399,14 +420,6 @@ def build_nir_graph(graph: IRGraph,
         carriers[n.id] = [n.id]
 
     edges = [e for e in dict.fromkeys(edges) if e[0] != e[1]]
-    if report.get("shape_blocked"):
-        first = report["shape_blocked"][0]
-        raise NIRShapeError(
-            f"neuron {first['node']!r} receives a {tuple(first['shape'])} activation, "
-            f"but NIR neuron layers carry 1-D per-neuron parameters and NIR 1.0.8 "
-            f"has no Reshape to restore the spatial dims. Convolutional SNNs "
-            f"(conv -> neuron -> conv) are not expressible with this standard "
-            f"version; deploy reports this as a blocker")
     nir_graph = nir.NIRGraph(nodes=nodes, edges=edges)
     report["edges"] = edges
     report["inserted_flatten"] = inserted_flatten

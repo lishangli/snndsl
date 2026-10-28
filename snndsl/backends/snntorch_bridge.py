@@ -27,8 +27,23 @@ NEURON_TYPES = ("LIF", "LI", "IF")
 
 
 def _const(param: Any, default: float) -> float:
+    """Read a NIR neuron parameter as the scalar snnTorch needs.
+
+    Every exporter here writes a constant-per-neuron array (a conv layer stores
+    ``(C,H,W)`` copies of one number), so ``arr[0]`` is the right answer - but
+    only when they really are copies. A genuine per-neuron tau or threshold
+    would be silently averaged away by taking the first element, which is the
+    kind of quiet wrongness this project refuses elsewhere, so check instead.
+    """
     arr = np.asarray(param, dtype=np.float64).reshape(-1)
-    return float(arr[0]) if arr.size else default
+    if arr.size == 0:
+        return default
+    if arr.size > 1 and not np.allclose(arr, arr[0], rtol=1e-9, atol=0.0):
+        raise ValueError(
+            f"neuron carries {arr.size} non-uniform parameter values "
+            f"(spread {float(arr.max() - arr.min()):.3g}); the snnTorch "
+            f"cross-check path only handles a shared parameter set")
+    return float(arr[0])
 
 
 class AdaptedLIF(nn.Module):

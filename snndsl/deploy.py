@@ -120,6 +120,18 @@ def analyze(graph: IRGraph) -> DeployReport:
         if n.op == "neuron":
             _check_neuron(graph, n, findings)
 
+        if n.op == "pool" and str(n.attrs.get("kind", "avg")) == "max":
+            findings.append(Finding(
+                "blocker", "max-pool", n.id,
+                "max pooling has no NIR primitive - the standard defines "
+                "AvgPool2d and SumPool2d only - so it would ship as average or "
+                "sum pooling, which changes the drive and with it the whole "
+                "spike train (measured on examples/cifar_hw.snn: exporting it "
+                "as sum pooled the 2x2 windows and drove the first layer's "
+                "spike rate from 0.02 to 0.37)",
+                "retrain with kind=avg pooling, which maps exactly, or keep this "
+                "conv stack off the deployment path"))
+
         if n.op == "conv":
             g = int(n.attrs.get("groups", 1))
             if g > 1:
@@ -159,21 +171,16 @@ def _check_neuron(graph: IRGraph, node: IRNode, findings: List[Finding]) -> None
 
     spec = graph.neurons[node.attrs["model"]]
 
-    # ---- NIR neuron layers are 1-D. A (C,H,W) activation cannot connect to
-    # one, and NIR 1.0.8 has no Reshape to restore spatial dims afterwards, so
-    # conv -> neuron -> conv is outside what the standard can carry today.
-    if len(tuple(node.shape)) > 1:
-        upstream = graph.node(node.inputs[0]).op if node.inputs else "?"
-        findings.append(Finding(
-            "blocker", "neuron-is-1d", node.id,
-            f"this neuron receives a {tuple(node.shape)} activation (from "
-            f"{upstream!r}), but a NIR neuron layer carries a 1-D per-neuron "
-            f"parameter array and NIR 1.0.8 has no Reshape to restore the "
-            f"spatial dims",
-            "export only the dense part of the network, or wait for / propose a "
-            "multi-dimensional neuron extension in NIR; today conv SNNs cannot "
-            "cross this boundary losslessly"))
-
+    # ---- A (C,H,W) activation is fine. NIR derives a neuron's input type from
+    # the shape of its parameter array (``LIF.__post_init__`` sets
+    # ``input_type = {"input": np.array(r.shape)}``), so per-element parameters
+    # of shape (C,H,W) are legal and ``conv -> neuron -> conv`` round-trips
+    # bit-exactly. An earlier version of this check assumed neurons were 1-D and
+    # blocked every conv SNN; that was wrong, and it was wrong in the direction
+    # of blaming the standard for our own flattening. The only real cost is that
+    # the file carries C*H*W parameter entries per neuron layer - identical to a
+    # dense layer of the same size, and there is no broadcast form in NIR that
+    # would shrink it.
     lif = recognise_lif(graph, node)
     if lif is None:
         # ---- a spiking neuron that is not LIF exports as a plain leaky
@@ -301,7 +308,25 @@ def verify(graph: IRGraph,
     if x.dim() == len(graph.node(graph.inputs[0]).shape):
         x = x.unsqueeze(0)
 
-    sim = nir_sim.simulate(nir_graph, x, steps=steps, dt=float(graph.temporal.dt))
+    # ---- The encoder has no NIR node, so it has to be folded into the drive.
+    # A `rate` encoder injects ``x * gain`` as a constant current on every step,
+    # which is precisely what an analog front-end does; dropping the gain and
+    # then comparing against ``module(x)`` (which *does* apply it) compares a
+    # 3x-scaled network against an unscaled one and reports a fake mismatch.
+    # Non-rate schemes sample randomness, so no current reproduces them - those
+    # stay reported as a semantic gap rather than being papered over.
+    #
+    # ``x_drive`` is deliberately a separate tensor: ``module`` below still gets
+    # the raw ``x`` and applies the gain itself.
+    x_drive = x
+    for n in graph.nodes:
+        if n.op != "encode":
+            continue
+        scheme = str(n.attrs.get("scheme", ""))
+        if scheme == "rate":
+            x_drive = x_drive * float(n.attrs.get("gain", 1.0))
+
+    sim = nir_sim.simulate(nir_graph, x_drive, steps=steps, dt=float(graph.temporal.dt))
 
     with torch.no_grad():
         ref = module(x)

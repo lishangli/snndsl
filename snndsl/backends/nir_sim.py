@@ -105,6 +105,28 @@ def _per_neuron(value: Any, n: int, dtype=torch.float32) -> torch.Tensor:
     return t
 
 
+def _to_state(p: torch.Tensor, like: torch.Tensor) -> torch.Tensor:
+    """Align a flat per-neuron parameter with an activation of arbitrary rank.
+
+    NIR lets a neuron's parameters have the same shape as its *activation* -
+    ``LIF.__post_init__`` literally sets ``input_type`` from ``r.shape`` - so a
+    conv SNN stores ``tau`` as ``(C, H, W)``. That case is a plain reshape.
+
+    The batched case is the older one: parameters stay ``(N,)`` and the leading
+    dimensions are a batch that shares one parameter set, so it broadcasts.
+    """
+    if p.numel() == like.numel():
+        return p.reshape(like.shape)
+    if like.dim() > 1 and p.numel() == int(np.prod(like.shape[1:])):
+        # activation carries a batch dim the parameters do not describe
+        return p.reshape((1,) + tuple(like.shape[1:])).expand_as(like)
+    if like.dim() > 1 and p.numel() == like.shape[-1]:
+        return p.reshape(*([1] * (like.dim() - 1)), p.numel()).expand_as(like)
+    raise ValueError(
+        f"neuron parameter of size {p.numel()} cannot be aligned with "
+        f"activation {tuple(like.shape)}")
+
+
 class _NeuronState:
     """Membrane bookkeeping for one spiking node."""
 
@@ -204,6 +226,20 @@ def simulate(nir_graph: Any,
                 v = src_vals[0]
                 start = int(_attr(node, "start_dim", 1))
                 end = int(_attr(node, "end_dim", -1))
+                # NIR declares shapes without a batch dim, but simulate() is fed
+                # (batch, ...). When the declared input type matches v.shape[1:]
+                # the caller kept a batch, so every non-negative dim index has to
+                # shift by one - otherwise flatten(0, -1) swallows the batch too.
+                declared = _attr(node, "input_type", None)
+                if isinstance(declared, dict):
+                    declared = declared.get("input")
+                if declared is not None:
+                    dshape = tuple(int(x) for x in np.asarray(declared).reshape(-1))
+                    if tuple(v.shape) != dshape and tuple(v.shape[1:]) == dshape:
+                        if start >= 0:
+                            start += 1
+                        if end >= 0:
+                            end += 1
                 values[name] = torch.flatten(v, start, end)
             elif kind in ("Conv1d", "Conv2d"):
                 values[name] = _apply_conv(node, src_vals[0])
@@ -346,29 +382,37 @@ def _step_neuron(node: Any, kind: str, state: _NeuronState,
     n = state.v.numel()
     cur = _as_tensor(current)
     if cur.shape != state.v.shape:
-        # first step: broadcast the flat membrane to the incoming batch shape
-        if cur.numel() % n == 0:
+        # First step: give the flat membrane the activation's shape.
+        #   * equal element count -> parameters describe every element, which is
+        #     how a conv SNN stores (C,H,W) neuron parameters;
+        #   * a whole multiple      -> the leading dims are a batch sharing one
+        #     parameter set, so the membrane broadcasts over them.
+        if cur.numel() == n:
+            state.v = state.v.reshape(cur.shape).clone()
+        elif n == 1:
             state.v = state.v.expand_as(cur).clone()
+        elif cur.numel() % n == 0 and int(np.prod(cur.shape[1:])) == n:
+            state.v = state.v.reshape(1, *cur.shape[1:]).expand_as(cur).clone()
         else:
             cur = cur.reshape(state.v.shape)
 
     if kind in ("LI", "CubaLI"):
-        tau = _per_neuron(_attr(node, "tau", torch.ones(n)), n)
-        r = _per_neuron(_attr(node, "r", torch.ones(n)), n)
-        v_leak = _per_neuron(_attr(node, "v_leak", torch.zeros(n)), n)
+        tau = _to_state(_per_neuron(_attr(node, "tau", torch.ones(n)), n), state.v)
+        r = _to_state(_per_neuron(_attr(node, "r", torch.ones(n)), n), state.v)
+        v_leak = _to_state(_per_neuron(_attr(node, "v_leak", torch.zeros(n)), n), state.v)
         v = state.v + (dt / tau) * ((v_leak - state.v) + r * cur)
         state.v = v
         return v, torch.zeros_like(v)
 
-    tau = _per_neuron(_attr(node, "tau", torch.ones(n)), n)
-    r = _per_neuron(_attr(node, "r", torch.ones(n)), n)
-    v_th = _per_neuron(_attr(node, "v_threshold", torch.ones(n)), n)
+    tau = _to_state(_per_neuron(_attr(node, "tau", torch.ones(n)), n), state.v)
+    r = _to_state(_per_neuron(_attr(node, "r", torch.ones(n)), n), state.v)
+    v_th = _to_state(_per_neuron(_attr(node, "v_threshold", torch.ones(n)), n), state.v)
 
     if kind in ("IF",):
         v = state.v + (dt / tau) * (r * cur)
         v_leak = None
     else:
-        v_leak = _per_neuron(_attr(node, "v_leak", torch.zeros(n)), n)
+        v_leak = _to_state(_per_neuron(_attr(node, "v_leak", torch.zeros(n)), n), state.v)
         v = state.v + (dt / tau) * ((v_leak - state.v) + r * cur)
 
     v_pre = v                       # potential *before* reset: what a membrane
@@ -386,10 +430,10 @@ def _step_neuron(node: Any, kind: str, state: _NeuronState,
     if v_reset is None:
         v = torch.where(spk > 0, torch.zeros_like(v), v)
     else:
-        vr = _per_neuron(v_reset, n)
+        vr = _to_state(_per_neuron(v_reset, n), v)
         v = torch.where(spk > 0, vr, v)
     if rho is not None:
-        rr = _per_neuron(rho, n)
+        rr = _to_state(_per_neuron(rho, n), v)
         v = torch.where(spk > 0, rr * v, v)
 
     state.v = v

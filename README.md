@@ -20,7 +20,7 @@
 为什么值得做、相比已有项目的差异：**[`docs/WHY.md`](docs/WHY.md)**。
 在生态里的位置（含真实 GitHub 数据）：**[`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md)**。
 接下来怎么走：**[`docs/ROADMAP.md`](docs/ROADMAP.md)**。
-五个网络的部署结论（四种不同答案）：**[`docs/P0_DEPLOY_MATRIX.md`](docs/P0_DEPLOY_MATRIX.md)**。
+六个网络的部署结论（五种不同答案，含一个卷积网逐位一致的正面案例）：**[`docs/P0_DEPLOY_MATRIX.md`](docs/P0_DEPLOY_MATRIX.md)**。
 同一份文件换个目标为什么不一样（三处规范缺口 + 实测）：**[`docs/SEMANTICS.md`](docs/SEMANTICS.md)**。
 用户访谈怎么问、什么结果算失败：**[`docs/INTERVIEW_KIT.md`](docs/INTERVIEW_KIT.md)**。
 一份能直接发给别人的部署报告：[`docs/deploy_report_mnist.html`](docs/deploy_report_mnist.html)。
@@ -579,6 +579,8 @@ snndsl infer examples/mnist_membrane.snn --weights build_mem/mnist_membrane.pt -
 | `examples/mnist_mlp.snn` | 完整 MLP-SNN：rate 编码、int8 PTQ、预算检查（spike readout） |
 | `examples/mnist_membrane.snn` | 同网络换 membrane readout，4 epoch 到 97.21% |
 | `examples/cifar_cnn.snn` | conv / max-pool / flatten、per-layer scale、flatten 融合 |
+| `examples/cifar_hw.snn` | 同上换 zero reset，**max pool 导致不可部署**（NIR 无 `MaxPool2d`） |
+| `examples/cifar_hw_avg.snn` | 只把池化换成 avg，**卷积网全链路逐位一致**（`max\|Δ\|=0.0`） |
 | `examples/adaptive_lif.snn` | 自定义神经元：双状态变量 + 自适应阈值 + atan 代理梯度 |
 | `examples/residual_snn.snn` | DAG 分支 + `add` 合并 + direct_input pass |
 | `examples/mnist_py.py` | **Python 前端**：`net.dense(...)` 构建同一网络，`--layers N` 用循环展开 |
@@ -622,11 +624,19 @@ round-trip 必须能发现丢失的字段、**校验器读的必须是磁盘文�
 - 硬件后端止步于 NIR 导出与**参考解释器**，未在任何真实芯片上验证。
   `deploy --verify` 与 `cross_validate.py` 证明的是"导出的 NIR 在规范语义下与训练实现一致"，
   不等于"在 Xylo/Loihi 上跑出来一致"——后者还取决于目标编译器的实现质量。
-- **卷积 SNN 目前无法导出**：NIR 1.0.8 的神经元层（LIF/LI/IF/CubaLIF）类型由一维
-  逐神经元参数数组决定，吃不下 `(C,H,W)` 激活；而 NIR 只有 `Flatten`、没有
-  `Unflatten`/`Reshape`，展平后无法还原空间维。因此 `conv → neuron → conv` 在标准内
-  无法表达。`deploy` 会对每个多维神经元报 `BLOCK`，`examples/cifar_hw.snn` 是
-  `NOT DEPLOYABLE`。这是标准能力边界，不是实现缺陷——要支持需要向 NIR 提多维神经元扩展。
+- **卷积 SNN 可以导出**（这条早前写错了，已更正）。原话是"NIR 的神经元层由一维
+  逐神经元参数数组决定，吃不下 `(C,H,W)`，所以 `conv → neuron → conv` 在标准内
+  无法表达"。实测不成立：NIR 的神经元从**参数数组自身的形状**推导 `input_type`
+  （`LIF.__post_init__` 就是 `input_type = {"input": np.array(r.shape)}`），
+  所以 `(C,H,W)` 的逐元素参数完全合法，元素个数与展平形式**一模一样**，只是 rank
+  不同——也就是说，不用付出任何体积代价。`examples/cifar_hw_avg.snn` 的完整卷积
+  链路 `max|error| = 0.0`、top-1 一致率 1.000。当初的报错来自我们自己把参数写成了
+  一维向量，再由 `deploy` 直接以"多维激活"为由 `BLOCK`，把实现问题记在了标准头上。
+- **真正挡住卷积的是 max pooling**：NIR 1.0.x 只定义 `AvgPool2d` 和 `SumPool2d`，
+  没有 `MaxPool2d`。`examples/cifar_hw.snn` 用了 `kind=max`，所以它仍是
+  `NOT DEPLOYABLE`。这条是标准的能力边界，改成 `kind=avg` 立刻通过。早前这个
+  池化在导出时被**静默写成 SumPool2d**（2×2 求和把驱动放大四倍，首层发放率
+  0.02 → 0.37），现在会报 `BLOCK` 并写明原因。
 - **`readout=membrane` 无法无损部署**：NIR 的脉冲神经元输出脉冲，不输出 reset 前的膜电位。
   这是标准层面的约束，不是实现缺陷。需要膜电位分类头时，只能在目标侧额外读状态。
 - **`subtract` reset 无法精确表达**：NIR 只有固定 `v_reset`。实测差异在大驱动下可达
