@@ -40,7 +40,15 @@ dependencies = ["numpy>=1.24"]
 torch = ["torch>=2.0", "torchvision>=0.15"]
 nir = ["nir>=1.0"]
 report = ["matplotlib>=3.7"]
-full = ["torch>=2.0", "torchvision>=0.15", "nir>=1.0", "matplotlib>=3.7"]
+# nirtorch needs torch, so it stays out of [nir]: that extra is what the
+# numpy-only CI job installs to prove the compiler core has no torch
+full = [
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "nir>=1.0",
+    "nirtorch>=2.0",
+    "matplotlib>=3.7",
+]
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",

@@ -132,6 +132,7 @@ def test_probe_survives_a_broken_interpreter():
 
 def test_third_party_reproduces_our_spikes_on_a_real_batch(tmp_path):
     """The load-bearing claim: a foreign runtime, same file, same spikes."""
+    pytest.importorskip("nirtorch", reason="the foreign runtime in question")
     r, _net, w = _compile("mnist_hw.snn")
     nir_path = str(tmp_path / "x.nir")
     export_nir(r.graph, nir_path, w, strict=True)

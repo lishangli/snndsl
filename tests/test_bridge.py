@@ -31,6 +31,7 @@ def test_unmapped_nodes_fall_back_to_nirtorch_default_map():
     ``NotImplementedError(<node type>)``, and every convolutional graph was then
     reported as blocked by an upstream gap that did not exist.
     """
+    pytest.importorskip("nirtorch", reason="make_map falls back to its DEFAULT_MAP")
     mapper = bridge.make_map(1.0)
     assert isinstance(mapper(_flatten_node()), torch.nn.Flatten)
     assert isinstance(mapper(_avgpool_node()), torch.nn.AvgPool2d)
@@ -38,6 +39,8 @@ def test_unmapped_nodes_fall_back_to_nirtorch_default_map():
 
 def test_unknown_node_types_still_raise():
     """The fallback must not turn into "anything goes"."""
+
+    pytest.importorskip("nirtorch", reason="make_map falls back to its DEFAULT_MAP")
 
     class NotANode:
         pass
