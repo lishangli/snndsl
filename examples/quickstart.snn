@@ -1,5 +1,5 @@
 # =============================================================================
-# 最小可运行示例 —— 全部 DSL 语法只用了 12 行有效代码。
+# 最小可运行示例 —— 25 行有效代码，覆盖 network / neuron / encode / train 四块。
 #   snndsl run   examples/quickstart.snn --epochs 2
 #   snndsl infer examples/quickstart.snn --weights build/quickstart.pt --ascii
 # =============================================================================

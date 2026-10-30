@@ -102,8 +102,9 @@ python -m snndsl.cli export examples/mnist_hw.snn -o /tmp/x.nir   # 写盘即回
 
 ### 18 · `[full]` 缺 nirtorch / snntorch —— 我们的 bug
 
-这是"自证"和"他证"之间最容易糊弄过去的一条。README 说第三方后端必须复现我们的
-每一个脉冲，而 `pip install -e ".[full]"` 装不到 `nirtorch` 和 `snntorch`——
+这是"自证"和"他证"之间最容易糊弄过去的一条。项目对外宣称第三方后端必须复现我们的
+每一个脉冲（`tests/test_export_integrity.py` 也这么断言），而 `pip install -e ".[full]"`
+装不到 `nirtorch` 和 `snntorch`——
 探针于是返回 `not-installed`，测试跳过，一切看起来正常。**一个从没跑过的对照，
 和一次通过的对照，在输出里长得一样。**
 

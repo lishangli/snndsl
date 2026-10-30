@@ -12,6 +12,29 @@ its numbers are checkable:
 
 ## [Unreleased]
 
+### Changed
+
+- **README rewritten for readers who have never seen the project.** The old one
+  was 737 lines and opened with a link farm of nine internal documents, including
+  an interview plan and an investor deck; the first screen answered "what did we
+  work on" rather than "what does this do for me". It is now ~370 lines in the
+  order a newcomer needs: what it is → install → a 25-line program and its real
+  compiler output → `deploy` and its real equivalence output → the language →
+  the command list → examples → three measured results → what it cannot do →
+  docs.
+- The internal material moved rather than disappeared:
+  `docs/ARCHITECTURE.md` (frontends, passes, codegen, directory layout) and
+  `docs/RESULTS.md` (all measurements, energy sensitivity, the readout
+  comparison) are new; the test inventory is now `CONTRIBUTING.md`'s
+  "Where the tests live".
+- Two claims that were only true of the old structure were corrected while
+  moving: `snndsl deploy` needs `[full]` (it compiles, so it needs torch) — the
+  old README implied otherwise; and the quickstart is **25** effective lines,
+  not 12, in `README.md`, `examples/quickstart.snn` and
+  `examples/TRAINING_AND_INFERENCE.md`.
+- `pip install snndsl` is gone from the README: the package is not on PyPI.
+  Installation is from source until it is.
+
 ## [0.2.1] - 2025-10-29
 
 The "`build` works on a numpy box" release. Everything here came out of a CI
