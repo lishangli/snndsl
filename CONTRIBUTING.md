@@ -67,6 +67,7 @@ different kind of claim, and the split matters more than the total:
 | `test_rockpool_probe.py` | 6 | the Xylo probe's parsing and its vendor-python isolation |
 | `test_bridge.py` | 5 | one "loads, runs, numbers are wrong" defect each: unmapped ops must fall through to nirtorch's `DEFAULT_MAP`, unknown ops must still raise, **average pooling must not be a sum**, multi-dimensional neuron params must raise rather than be averaged, per-sample probing must reset the membrane |
 | `test_artifacts.py` | 4 | `build` works with torch's import machinery blocked in a subprocess — an environment that has torch cannot prove it does not need it |
+| `test_mlir_export.py` | 6 | conv is refused, not approximated; **exactly one time loop**, with both dense layers inside it; the signature is the ABI; xdsl parses every dense example; xdsl executes it and every spike position matches PyTorch |
 | `test_docs_links.py` | 1 | every relative link in the docs resolves |
 
 The 4 skips are the vendor-toolchain probes (sinabs / rockpool) described above.

@@ -9,7 +9,7 @@
 | 这项目和 snnTorch / SpikingJelly 有什么区别 | [WHY.md](WHY.md) | 它们是运行时，这里是编译层：检查、优化、量化成本、导出 |
 | 编译器内部怎么走 | [ARCHITECTURE.md](ARCHITECTURE.md) | 两个前端 → 一个 IR → pass → 可读 PyTorch 源码 |
 | 实测到底多少 | [RESULTS.md](RESULTS.md) | 精度、内存、能耗敏感性，全在 CPU 上跑出来 |
-| 生态里已经有哪些项目，我们占哪个位置 | [ECOSYSTEM.md](ECOSYSTEM.md) | 含真实 GitHub 数据，不夸大 |
+| 生态里已经有哪些项目，我们占哪个位置 | [ECOSYSTEM.md](ECOSYSTEM.md) | 含真实 GitHub 数据；§7 专门讲 MLIR 路线与 verilator 目标层 |
 | 我的网络能不能上硬件 | [P0_DEPLOY_MATRIX.md](P0_DEPLOY_MATRIX.md) | 七个网络、五种结论，每条都是命令输出 |
 | 为什么同一个文件换个目标结果不同 | [SEMANTICS.md](SEMANTICS.md) | 三处规范没写死的地方 + 实测差异 |
 | 还差什么，算谁的账 | [GAPS.md](GAPS.md) | 每条缺口标归属（我们/上游/标准）+ 验证命令 |

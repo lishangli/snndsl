@@ -29,7 +29,7 @@ def _cmd_build(args) -> int:
     paths = export_artifacts(r, args.out)
     print("\nartifacts:")
     for kind, p in paths.items():
-        if not kind.endswith("_error") and p.endswith((".py", ".json", ".nir")):
+        if not kind.endswith("_error") and p.endswith((".py", ".json", ".nir", ".mlir")):
             print(f"  {kind:<10} {p}")
     nir_error = paths.get("nir_error")
     if nir_error:
@@ -38,6 +38,9 @@ def _cmd_build(args) -> int:
         print(f"\nnote: no .nir file was written - {nir_error}")
         if "nir package missing" in nir_error:
             print("      hint: pip install 'snndsl[nir]' enables the NIR exporter")
+    mlir_error = paths.get("mlir_error")
+    if mlir_error:
+        print(f"\nnote: no .mlir file was written - {mlir_error}")
     if args.emit_asm:
         print("\n--- generated module ---")
         print(r.module_source)

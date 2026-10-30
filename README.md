@@ -3,10 +3,11 @@
 [![CI](https://github.com/lishangli/snndsl/actions/workflows/ci.yml/badge.svg)](https://github.com/lishangli/snndsl/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.2.1-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
 
-用一份 `.snn` 文本或几行 Python 描述脉冲神经网络，编译成三样东西：
-**可读的 PyTorch 源码**、**带数字的推理成本**、**能交给神经形态硬件的 NIR**。
+用一份 `.snn` 文本或几行 Python 描述脉冲神经网络，编译成四样东西：
+**可读的 PyTorch 源码**、**带数字的推理成本**、**能交给神经形态硬件的 NIR**、
+**能被 MLIR 工具链读的 `.mlir`**。
 外加一个别人不做的事——回答「这样导出去之后，还是同一个网络吗」，逐脉冲给证据。
 
 ## 它补的是哪一段
@@ -14,6 +15,10 @@
 `snnTorch`、`SpikingJelly`、`Norse` 已经能训练 SNN，`NIR` 已经能把 SNN 交给芯片。
 缺的是中间那层：把网络当**程序**来检查、优化、量化成本，并在导出前后对一次账。
 所以这里没有新的神经元模型、没有新的仿真器，只有编译层。
+
+中间层现在有别人了：SNN-MLIR 和 SNAX 用 MLIR/xdsl 做 NIR 往下的 lowering，做得比本项目
+深。空着的是另一半——**从源码往上**，以及在训练开始前就说清「这个网络上不了硬件」。
+两者的边界、以及为什么不硬接他们的后端，写在 [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) §7。
 
 | 你的处境 | snndsl 给什么 |
 |---|---|
@@ -263,7 +268,7 @@ checkpoint 也通用：`.snn` 训出来的权重直接加载进 Python 前端编
 | 命令 | 作用 |
 |---|---|
 | `snndsl inspect <file>` | 编译并打印 IR、形状、每个 pass 的 before/after |
-| `snndsl build <file>` | 编译出 `.py`（可读 PyTorch 源码）+ `.ir.json` + `.nir` |
+| `snndsl build <file>` | 编译出 `.py`（可读 PyTorch 源码）+ `.ir.json` + `.nir` + `.mlir` |
 | `snndsl run <file>` | 编译 → 训练 → 量化 → 测稀疏度/能耗/预算 |
 | `snndsl infer <file> --weights w.pt` | 从 checkpoint 推理：top-k、逐层脉冲数、nJ、延迟 |
 | `snndsl export <file> -o x.nir` | 只导出 NIR，可带 `--weights` |

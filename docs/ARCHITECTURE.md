@@ -82,6 +82,7 @@ v_h1_1 = s
 | 文件 | 作用 |
 |---|---|
 | `nir_export.py` | IR → NIR：写盘后回读自证、方言降级、`strict` 拒绝空壳 |
+| `mlir_export.py` | IR → MLIR 文本（`builtin/func/memref/arith/scf`，不注册自定义方言）；conv/pool/merge 明确拒绝 |
 | `nir_sim.py` | 独立的 NIR 参考解释器：逐位复现、readout、输出脉冲流 |
 | `targets.py` | 厂商探针：nirtorch / sinabs / rockpool，各自跑在独立子进程 |
 | `snntorch_bridge.py` | NIR → snnTorch 的映射，三处上游陷阱的绕行都在这里 |
@@ -106,6 +107,7 @@ snndsl/
 │   ├── runtime.py       代理梯度/编码/数据/训练循环/能耗常数
 │   ├── torch_codegen.py IR → PyTorch 源码
 │   ├── nir_export.py    IR → NIR
+│   ├── mlir_export.py   IR → MLIR text
 │   ├── nir_sim.py       NIR 参考解释器
 │   ├── targets.py       厂商工具链探针（独立子进程）
 │   └── snntorch_bridge.py NIR → snnTorch 映射

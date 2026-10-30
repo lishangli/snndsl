@@ -30,6 +30,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 16 | `build` 要 torch 才能写文件 | **我们的** | 已关闭 · numpy-only 下通过 |
 | 17 | `nir_sim` 拿 torch 当张量库 | **我们的** | 开着 · `--verify` 需要 PyTorch |
 | 18 | `[full]` 缺 nirtorch / snntorch，第三方对照静默跳过 | **我们的** | 已关闭 · CI 里真跑 |
+| 19 | `conv` / `pool` / 残差合并没有 MLIR lowering | **我们的** | 开着 · 报 `MLIRUnsupported`，不近似 |
 
 ---
 
@@ -233,9 +234,31 @@ what works right now
 
 ---
 
+### 19 · MLIR 后端只有全连接 —— 我们的
+
+`snndsl build` 现在产出 `.mlir`，但只覆盖 `input / encode / flatten / dense /
+neuron / output`。`conv`、`pool`、残差 `add` 会 raise `MLIRUnsupported`。
+
+这不是没来得及写，是有意不写：conv 和 pool 需要 linalg 的索引映射（`im2col`
+或显式 `affine_map`），而残差合并需要一个 NIR 里也不存在的 add 原语。这三样
+如果写错，产出的文件**能解析、能执行、数字是错的**——正是这个项目存在的理由
+的反面。与其近似，不如报错，让下游（SNAX 的 `snaxc` 就是干这个的）接手。
+
+代价说清楚：卷积 SNN 今天只能走 NIR，走不了 MLIR。CIFAR 那个例子就是这种情况，
+`build` 会在 artifacts 下面打一行
+
+```
+note: no .mlir file was written - 'conv' has no MLIR lowering in this backend: ...
+```
+
+状态：**开着**，且短期不打算关。什么时候关：等有人真的需要 `.snn → MLIR → 芯片`
+这条路，且能给出一条能验证的 conv 索引映射——那时候按测试驱动写，而不是先猜。
+
+---
+
 ## 怎么用这张表
 
-- 想判断能不能用：先看第 9–11、17 条属于你的网络吗，属于就别绕，绕不过去。
+- 想判断能不能用：先看第 9–11、17、19 条属于你的网络吗，属于就别绕，绕不过去。
 - 想贡献：第 13 条是价值最高且不需要外部条件的；第 9–11 条需要向上游推。
 - 想质疑结论：每一条都给了命令。跑不出同样的数字，就是这张表错了，
   提 issue 时把 `snndsl doctor` 一起贴上。

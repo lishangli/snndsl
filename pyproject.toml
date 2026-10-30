@@ -39,6 +39,11 @@ dependencies = ["numpy>=1.24"]
 [project.optional-dependencies]
 torch = ["torch>=2.0", "torchvision>=0.15"]
 nir = ["nir>=1.0"]
+# Only the MLIR tests need this: emitting `.mlir` is plain string formatting and
+# has no dependency at all. xdsl is here so `tests/test_mlir_export.py` can be
+# judged by an MLIR implementation that is not ours -- the same one SNAX builds
+# its compiler on. Kept out of [dev] so the numpy-only CI job stays numpy-only.
+mlir = ["xdsl>=0.40"]
 report = ["matplotlib>=3.7"]
 # nirtorch needs torch, so it stays out of [nir]: that extra is what the
 # numpy-only CI job installs to prove the compiler core has no torch

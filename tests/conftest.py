@@ -15,6 +15,7 @@ import importlib.util
 
 HAVE_TORCH = importlib.util.find_spec("torch") is not None
 HAVE_NIR = importlib.util.find_spec("nir") is not None
+HAVE_XDSL = importlib.util.find_spec("xdsl") is not None
 
 # module -> (condition that must hold, what is missing)
 _REQUIRES = {
@@ -34,6 +35,7 @@ def pytest_report_header(config) -> str:
     bits = [
         f"torch: {'yes' if HAVE_TORCH else 'no'}",
         f"nir: {'yes' if HAVE_NIR else 'no'}",
+        f"xdsl: {'yes' if HAVE_XDSL else 'no'}",
     ]
     if collect_ignore:
         bits.append(f"ignored {len(collect_ignore)} backend test modules")

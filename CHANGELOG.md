@@ -12,6 +12,38 @@ its numbers are checkable:
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-30
+
+### Added
+
+- **MLIR target** (`snndsl/backends/mlir_export.py`, `snndsl build` now writes
+  `<name>.mlir`). Emits `builtin / func / memref / arith / scf` and nothing
+  else — no custom dialect — so `mlir-opt` and xdsl both read it without a
+  plugin. One `func.func`, one `scf.for` over the T steps, layers in
+  topological order inside it, flat memrefs throughout. No tiling, no
+  vectorisation, no buffer reuse: optimising is what the downstream compiler is
+  for, and downstream is better at it than this project will ever be.
+- Verified by two runtimes that are not this repo: xdsl 0.74 parses all four
+  dense examples, and the xdsl *interpreter* executes them with every spike
+  position matching a PyTorch forward pass (`differ = 0`). See
+  `tests/test_mlir_export.py`.
+- `docs/ECOSYSTEM.md` §7: where MLIR-based SNN compilers sit (SNN-MLIR from
+  NIR, SNAX-MLIR from `linalg` on RISC-V clusters with a verilated model), what
+  they do better, and why "just plug into their backend" does not work.
+
+### Changed
+
+- `docs/ECOSYSTEM.md` §1 and §4 said the middle layer was empty. It stopped
+  being empty: what is empty is the half *above* NIR. Both places now say which
+  half, and §7 explains the split.
+
+### Refused, on purpose
+
+- `conv`, `pool`, residual `add` have no lowering here. They need index maps
+  this project would get subtly wrong, or a merge primitive NIR does not have
+  either. `MLIRUnsupported` names the reason; a file that parses and computes
+  the wrong thing is the exact failure mode this project exists to catch.
+
 ### Changed
 
 - **README rewritten for readers who have never seen the project.** The old one

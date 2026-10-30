@@ -19,13 +19,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 def export_artifacts(result: CompileResult, out_dir: str,
                      class_name: str = "SnnNet") -> Dict[str, str]:
-    """Write ``<name>.py``, ``<name>.ir.json`` and (if nir is importable)
-    ``<name>.nir`` into *out_dir*.
+    """Write ``<name>.py``, ``<name>.ir.json``, ``<name>.mlir`` and (if nir is
+    importable) ``<name>.nir`` into *out_dir*.
 
     Returns a mapping from artifact kind to path. A missing NIR backend is not
-    fatal: the keys ``nir_error`` (why) and ``nir_json`` (the fallback the
-    exporter left behind, if any) carry the news so callers can report it
-    without failing the build.
+    fatal, and neither is a graph the MLIR target cannot express: the keys
+    ``nir_error`` / ``nir_json`` / ``mlir_error`` carry the news so callers can
+    report it without failing the build. Producing *some* of the artifacts is
+    still useful; dying because one target does not handle conv would throw
+    away the other three.
     """
     os.makedirs(out_dir, exist_ok=True)
     name = result.graph.name
@@ -50,4 +52,11 @@ def export_artifacts(result: CompileResult, out_dir: str,
         # next to the artifacts
         if os.path.exists(nir_path + ".json"):
             paths["nir_json"] = nir_path + ".json"
+    mlir_path = os.path.join(out_dir, f"{name}.mlir")
+    try:
+        from .backends.mlir_export import export_mlir
+        export_mlir(result.graph, mlir_path)
+        paths["mlir"] = mlir_path
+    except Exception as exc:      # conv/pool have no MLIR lowering yet
+        paths["mlir_error"] = str(exc)
     return paths
