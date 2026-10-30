@@ -233,6 +233,7 @@ def _cmd_inspect(args) -> int:
 
 def _cmd_export(args) -> int:
     from .backends.nir_export import export_nir, load_checkpoint_weights
+    from .backends.snn_mlir import preflight
     from .pipeline import compile_file
     r = compile_file(args.file, passes=args.passes)
     weights = None
@@ -240,16 +241,62 @@ def _cmd_export(args) -> int:
         weights = load_checkpoint_weights(args.weights)
         print(f"weights   : {len(weights)} tensors from {args.weights}")
     out = args.out or (os.path.splitext(os.path.basename(args.file))[0] + ".nir")
-    rep = export_nir(r.graph, out, weights)
+    target = getattr(args, "target", None)
+    if getattr(args, "lower", None) and target is None:
+        # lowering a plain-NIR file cannot work: the backend finds its entry
+        # points by name. Doing this silently is friendlier than an error that
+        # says "Graph has no 'input' node" three frames down.
+        target = "snn-mlir"
+        print("note      : --lower implies --target snn-mlir (terminals renamed)")
+
+    # The pre-flight runs *before* the file is written, and it answers a
+    # different question than the backend does: not "will it convert" but "is
+    # what converts still this network". See backends/snn_mlir.py.
+    pf = None
+    if target == "snn-mlir":
+        pf = preflight(r.graph)
+        print("preflight : " + ("faithful" if pf["faithful"] else
+                                "accepts, but lossy" if pf["accepts"] else "refused"))
+        for f in pf["blockers"]:
+            print(f"  block   : {f['node']:8s} {f['rule']:26s} {f['detail']}")
+            print(f"            {f['source']}")
+        for f in pf["lossy"]:
+            print(f"  lossy   : {f['node']:8s} {f['rule']:26s} {f['detail']}")
+            print(f"            {f['source']}")
+        for n in pf["notes"]:
+            print(f"  note    : {n['detail']}")
+
+    rep = export_nir(r.graph, out, weights, target=target)
     print(f"NIR graph : {out}")
     print(f"  nodes   : {rep['node_count']}")
     print(f"  edges   : {len(rep['edges'])}")
+    if rep.get("terminals"):
+        t = rep["terminals"]
+        print(f"  terminal: {t['input']['original']} -> {t['input']['emitted']}, "
+              f"{t['output']['original']} -> {t['output']['emitted']}")
     print(f"  mapping : {rep['nodes']}")
     if rep["approximated"]:
         print(f"  approx  : {rep['approximated']}")
     if rep["unsupported"]:
         print(f"  skipped : {rep['unsupported']}")
-    return 0
+    if pf is not None and not pf["faithful"]:
+        print("  verdict : the file is valid NIR and the backend will convert it, "
+              "but the result is not this network (see above)")
+
+    lower = getattr(args, "lower", None)
+    if lower:
+        from .backends import snn_mlir
+        # "-" means "beside the .nir, same stem", which is the CLI's own default;
+        # passing `out` here would overwrite the .nir we just wrote.
+        res = snn_mlir.to_mlir(out, None if lower == "-" else lower)
+        print(f"MLIR      : {res['mlir']}")
+        print(f"  command : {res['command']}")
+        for line in (res["stdout"] + res["stderr"]).strip().splitlines():
+            print(f"  {line}")
+        if not res["ok"]:
+            return 1
+    return 1 if (pf is not None and not pf["accepts"]) else 0
+
 
 
 def _cmd_emit(args) -> int:
@@ -678,8 +725,18 @@ def build_parser() -> argparse.ArgumentParser:
     e = sub.add_parser("export", help="export NIR")
     e.add_argument("file")
     e.add_argument("--weights", default=None, help="checkpoint .pt with weights")
+    e.add_argument("--target", default=None, choices=["snn-mlir"],
+                   help="shape the file for one consumer; 'snn-mlir' renames the "
+                        "terminals to 'input'/'output' and prints a pre-flight")
+    e.add_argument("--lower", default=None, metavar="MLIR",
+                   help="also lower to SNN-dialect MLIR via the snn-mlir CLI"
+                        " (use '-' for the .nir's own path)")
     common(e)
-    e.set_defaults(func=_cmd_export)
+    # `common()` gives --out a default of "build" for the build/run commands,
+    # which for export means `snndsl export x.snn` writes a file literally
+    # named `build`, with no extension, next to the sources. Override it so the
+    # default stays "derive from the input name".
+    e.set_defaults(func=_cmd_export, out=None)
 
     em = sub.add_parser("emit",
                         help="print the program back as .snn text (normalise it)")

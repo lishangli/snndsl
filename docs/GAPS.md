@@ -40,6 +40,10 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 26 | 同一变量声明两次 `spike`，第一条静默失效 | **我们的** | 已关闭 · `SemaError`，带行号 |
 | 27 | `forward` 里复用同一个层不共享权重 | **我们的** | 开着 · 每次调用新建节点，权重各一份 |
 | 28 | `forward` 里写不了数据相关的 `if` | **我们的** | 开着 · 图必须静态，写了会报错 |
+| 29 | SNN-MLIR 从 `r` 反推 `dt`，输入增益≠1 时静默改动力学 | **上游** snn-mlir | 已拦住 · 预检 `input_gain_baked_into_r` |
+| 30 | 终端节点按字符串 `input`/`output` 找 | **上游** snn-mlir | 已绕开 · `export --target snn-mlir` |
+| 31 | `snndsl export` 不传 `-o` 时写出名为 `build` 的无扩展名文件 | **我们的** | 已关闭 · 默认按输入名派生 |
+| 32 | `snn-mlir run` 需要的 `snn-opt` 不在 PyPI | **外部** | 未通 · 需从 MLIR/LLVM 源码构建 |
 
 ---
 
@@ -538,6 +542,68 @@ def forward(self, x):
 状态：**开着**，不打算修。报错来自 Python 本身，信息是 `'Tensor' object has no
 attribute 'sum'`，能看懂但没指出"是因为图必须静态"。如果实际用起来这条困扰人，
 再加一个 `Tensor.__getattr__` 给出定向提示。
+
+### 29 · SNN-MLIR 从 `r` 反推时间步，增益不是 1 时静默改网络 —— 上游（已拦住）
+
+`nodes/lif.py:89-90` 这样恢复一步的长度：
+
+```python
+dt = float(node.tau.flat[0] / node.r.flat[0])
+decay = float(1 - (dt / node.tau.flat[0]))
+```
+
+只有当 `r == tau/dt`（神经元以增益 1 积分输入）时才成立。一个写成
+`v = v*(1 - dt/tau) + 2*i` 的神经元导出 `r = 2*tau/dt`，于是后端算出
+`decay = 1 - 1/r = 0.75`，而真实衰减是 `1 - dt/tau = 0.5`；输入增益 2 也一并丢掉。
+
+我们这边的导出是**对的**（NIR 的方程确实描述那张网），错在消费者的反推。但结果一样：
+`check` 说 `supported`，C 编得过，数字是错的。所以进预检：
+
+```console
+$ python examples/hw_chain.py --sweep      # adaptive_lif 那一行同理
+  r = 4 but tau/dt = 2: the backend reads decay = 1 - 1/r = 0.75 instead of 0.5,
+  and feeds the input at gain 1
+```
+
+状态：**上游的**，我们这边以预检拦住（`test_input_gain_rule_names_the_decay_the_backend_will_use`
+断言 0.5 与 0.75 两个数）。给上游的 issue 草稿要点：`r` 在 NIR 里同时承担
+"输入增益 × tau/dt"两个角色，反推时必须知道增益；建议要求 `|r - tau/dt| < eps` 否则报错，
+而不是默默算一个 decay。
+
+### 30 · 终端节点按字符串找 —— 上游（已绕开）
+
+`snn_mlir/_graph.py:26` 写死 `TERMINALS = ("input", "output")`，而 NIR 标准用
+`NIRGraph.inputs`/`.outputs`（从节点类型推出）。结果是合法的 `.nir` 被报
+`Graph has no 'input' node`。
+
+状态：**上游的**，我们这边用 `--target snn-mlir` 让名字，原名字留在
+`report["terminals"]` 和文件 metadata 里。这是给一个消费者的让步，默认导出不改名。
+
+### 31 · `export` 继承了 `build` 的 `-o` 默认值 —— 我们的（已关闭）
+
+`snndsl export x.snn`（不传 `-o`）会写出一个**叫 `build`、没有扩展名**的文件，
+旁边再掉一个 `build.report.json`。原因是 `export` 复用了 `build`/`run` 的参数组，
+而那组的 `--out` 默认值是目录名 `"build"`。
+
+状态：**已关闭**。`export` 现在单独把默认置空，按输入文件名派生 `<stem>.nir`。
+这条属于"能跑、但产物在错地方"的一类，测试很难自然覆盖到——记在这里是因为
+它是被 `--target` 的实测顺带撞出来的，不是被测试撞出来的。
+
+### 32 · 最后一步要的工具链不在 PyPI —— 外部
+
+`snn-mlir run` 需要 `snn-opt` + `mlir-opt`/`mlir-translate`/`llc`。前者是
+MLIR/LLVM 源码树里的 CMake 产物：
+
+```console
+$ pip install snn-opt && python -c "import snn_opt; print(dir(snn_opt)[:4])"
+['AffineSubspaceProjector', 'ConvergenceConfig', 'DykstraProjector', ...]
+```
+
+装是装上了，但不是同一个东西——那是半定规划/SOCP 求解器，只是撞名。
+
+状态：**未通**。所以链路终点是 `build/` 目录（`network.mlir` + `main.c` + 数据头），
+不是 `results.csv`。`snndsl/backends/snn_mlir.run()` 把后端的原始报错带回来，不假装跑过。
+要闭合这一环只能编 LLVM，不属于本仓库范围。
 
 ---
 

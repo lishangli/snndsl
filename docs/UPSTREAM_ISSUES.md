@@ -217,6 +217,61 @@ nirtorch 复现我们每一个脉冲，`max|Δ| = 0.00e+00`。
 
 ---
 
+## Issue 5 · SNN-MLIR 从 `r` 反推 `dt`，输入增益≠1 时静默改网络（对 SNN-MLIR 提）
+
+> 这条不是"我们读不懂你的格式"，是"你接受了一个你不该说等价的模型"。
+> 复核方式：`python examples/hw_chain.py --sweep`，一行一张图。
+
+### 复现
+
+```python
+import snndsl as snn
+
+Gain2 = snn.custom("Gain2", params={"tau": 2.0, "v_th": 1.0}, state={"v": 0.0},
+                   body=["v = v * (1 - dt / tau) + 2 * i",
+                         "spike s = v > v_th",
+                         "v = v * (1 - s)"])
+net = snn.Net("gain2", steps=8, dt=1.0, reset="zero")
+x = net.encode(net.input(1, 28, 28), "rate", 1.0)
+h = net.neuron(net.dense(x, 32, name="h1"), Gain2)
+net.output(net.neuron(net.dense(h, 10, name="y"), Gain2))
+net.compile()
+```
+
+导出后 `LIF.r = 4`、`tau = 2`、`dt = 1`，`snn-mlir check` 返回 `supported`。
+
+### 实际
+
+`nodes/lif.py:89-90`：
+
+```python
+dt = float(node.tau.flat[0] / node.r.flat[0])     # = 2/4 = 0.5
+decay = float(1 - (dt / node.tau.flat[0]))        # = 0.75
+```
+
+这张网的真实衰减是 `1 - dt/tau = 0.5`，输入增益是 2。lower 出来的
+`snn.lif {decay_float = 7.5e-01}`，输入按增益 1 喂。
+
+### 预期
+
+两种都行，但不能沉默：
+
+1. `abs(r - tau/dt) > eps` 时报错，说明"这个节点的输入增益不是 1，无法用
+   `dt = tau/r` 反推步长"；或
+2. 承认 `r` 是两件事的乘积（输入增益 × `tau/dt`），把它拆成两个字段。
+
+### 为什么这是 NIR 层面的问题，不只是实现细节
+
+NIR 的 LIF 方程是 `tau*dv/dt = (v_leak - v) + r*i`。`r` 在这里是**电流增益**，
+离散化后 `v' = (1 - dt/tau)v + (dt/tau)*r*i`——`r` 同时携带步长和增益，两者不可分。
+所以任何"从 `r` 反推 `dt`"的实现都隐含假设增益为 1，而这个假设不在文件里。
+建议规范把这条写死（这也是我们 `docs/GAPS.md` #12 记着的三类"未写死语义"之一）。
+
+### 影响
+
+对我们是"预检多一条规则"，对一个想让 SNN 上硬件的用户是**训练好的网络被悄悄改了**。
+`v_leak`、`v_reset` 这两条你们已经做了硬校验（`nodes/lif.py:76,86`），`r` 是同一种东西。
+
 ## 提交后跟进
 
 | 结果 | 对我们的影响 |
@@ -225,3 +280,4 @@ nirtorch 复现我们每一个脉冲，`max|Δ| = 0.00e+00`。
 | rockpool 说不修（等自己升级 nir） | 我们把 `--vendor-python` + 降级方言维持下去，报告里如实标 `upstream-gap` |
 | NIR 加了版本字段 | 我们的 `_downgrade_dialect` 可以退休，改成读 `nir_version` |
 | 两边都没回应 | 说明"编译层"的窗口是真的：没人替用户处理这些，那就我们处理 |
+| SNN-MLIR 修了 `r` 的校验 | 预检里的 `input_gain_baked_into_r` 可以降级成警告，我们少一条规则、他们多一条 |

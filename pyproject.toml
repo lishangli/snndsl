@@ -44,6 +44,11 @@ nir = ["nir>=1.0"]
 # judged by an MLIR implementation that is not ours -- the same one SNAX builds
 # its compiler on. Kept out of [dev] so the numpy-only CI job stays numpy-only.
 mlir = ["xdsl>=0.40"]
+# The SNN-MLIR frontend (NIR -> SNN dialect -> C). Only the interop tests and
+# `export --target snn-mlir --lower` need it; writing the targeted `.nir` is
+# numpy-only. Its `run` subcommand additionally needs a toolchain built from
+# MLIR/LLVM sources -- that is not a pip install, and no extra can give it.
+interop = ["snn-mlir>=1.0"]
 report = ["matplotlib>=3.7"]
 # nirtorch needs torch, so it stays out of [nir]: that extra is what the
 # numpy-only CI job installs to prove the compiler core has no torch

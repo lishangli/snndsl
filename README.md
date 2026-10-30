@@ -3,7 +3,7 @@
 [![CI](https://github.com/lishangli/snndsl/actions/workflows/ci.yml/badge.svg)](https://github.com/lishangli/snndsl/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.4.0-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.5.0-informational)](CHANGELOG.md)
 
 **用 Python 写网络，用 `.snn` 存档**，编译成四样东西：
 **可读的 PyTorch 源码**、**带数字的推理成本**、**能交给神经形态硬件的 NIR**、
@@ -74,8 +74,15 @@ result = net.compile()
 所以这里没有新的神经元模型、没有新的仿真器，只有编译层。
 
 中间层现在有别人了：SNN-MLIR 和 SNAX 用 MLIR/xdsl 做 NIR 往下的 lowering，做得比本项目
-深。空着的是另一半——**从源码往上**，以及在训练开始前就说清「这个网络上不了硬件」。
-两者的边界、以及为什么不硬接他们的后端，写在 [docs/ECOSYSTEM.md](docs/ECOSYSTEM.md) §7。
+深。所以这里不重写 lowering，而是把图**递过去**：`snndsl export --target snn-mlir` 产出的
+`.nir` 能直接过 `snn-mlir check`、被 lower 成 SNN-dialect MLIR、被 codegen 成 C 驱动，
+`build/main.c` 里的循环上界就是我们的 `T`。实测记录在
+[docs/SNN_MLIR.md](docs/SNN_MLIR.md)。
+
+递过去之后还剩一件事，也是唯一没人做的一件事：**lower 完跑的还算不算同一个网络**。
+十个示例对拍的结果是，第三方 `check` 会对其中三个说 `supported`，而那三个已经不是原网络
+（maxpool 被写成 avgpool、ALIF 被写成 LI）。这一层的答案只能来自逐脉冲对比，
+就是本仓库 `deploy --verify` 在做的事。
 
 | 你的处境 | snndsl 给什么 |
 |---|---|
@@ -487,6 +494,7 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | 生态位，含真实 GitHub 数据 |
 | [`docs/ECOSYSTEM_GAPS.md`](docs/ECOSYSTEM_GAPS.md) | 训练/交换/编译/硬件五段缺陷清单，含外部模型的实测数字 |
 | [`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) | 从 PyTorch 往下：哪一段能复用，分水岭是时间循环 |
+| [`docs/SNN_MLIR.md`](docs/SNN_MLIR.md) | 把 `.nir` 交给 SNN-MLIR 的实测：改了什么、断在哪、`supported` 与 `faithful` 的区别 |
 | [`docs/deploy_report_mnist.html`](docs/deploy_report_mnist.html) | 一份可以直接发给别人的部署报告 |
 
 ## 依赖与致谢

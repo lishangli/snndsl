@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..errors import SNNError
 from ..ir import IRGraph, IRNode
 
 try:
@@ -188,8 +189,20 @@ def _spatial_input_shape(graph: IRGraph, node: IRNode) -> Tuple[int, int]:
 
 
 def build_nir_graph(graph: IRGraph,
-                    weights: Optional[Dict[str, Any]] = None) -> Tuple[Any, Dict[str, Any]]:
-    """Return (NIRGraph, report). Raises if the NIR package is missing."""
+                    weights: Optional[Dict[str, Any]] = None,
+                    terminal_names: Optional[Tuple[str, str]] = None,
+                    ) -> Tuple[Any, Dict[str, Any]]:
+    """Return (NIRGraph, report). Raises if the NIR package is missing.
+
+    ``terminal_names`` renames the two terminal nodes to the given
+    ``(input, output)`` names. The NIR standard does not require any particular
+    name -- a graph's entry points are ``NIRGraph.inputs`` / ``.outputs``, which
+    NIR derives from node *types* -- but not every consumer reads the standard:
+    SNN-MLIR's graph walk hardcodes the strings ``"input"`` and ``"output"``
+    (``snn_mlir/_graph.py``). Renaming at build time is the only way to satisfy
+    such a reader without lying about the graph, and the original names are kept
+    in ``report["terminals"]`` so nothing is lost.
+    """
     if not HAS_NIR:
         raise RuntimeError("the 'nir' package is not installed (pip install nir)")
 
@@ -198,6 +211,32 @@ def build_nir_graph(graph: IRGraph,
     report: Dict[str, Any] = {"nodes": {}, "unsupported": [], "approximated": [],
                               "missing_weight_nodes": [], "zero_weight_nodes": []}
     name_of: Dict[str, str] = {}
+
+    # ---- terminal aliasing (see docstring)
+    alias: Dict[str, str] = {}
+    report["terminals"] = None
+    if terminal_names is not None:
+        tin, tout = (str(t) for t in terminal_names)
+        for op, want in (("input", tin), ("output", tout)):
+            hits = [n for n in graph.nodes if n.op == op]
+            if len(hits) > 1:
+                raise SNNError(
+                    f"cannot rename terminals: the graph has {len(hits)} "
+                    f"'{op}' nodes",
+                    hint=f"{op} must be unique before it can be renamed to {want!r}")
+            if hits:
+                alias[hits[0].id] = want
+        taken = {_safe(n.id) for n in graph.nodes if n.id not in alias}
+        for ir_id, want in alias.items():
+            if want in taken:
+                raise SNNError(
+                    f"cannot rename terminal {ir_id!r} to {want!r}: another node "
+                    f"already uses that name",
+                    hint="the target tool identifies entry points by name, so the "
+                         "name must be free; rename the other node")
+
+    def _nid(ir_id: str) -> str:
+        return alias.get(ir_id, _safe(ir_id))
     # A caller that passes ``weights={}`` means "I have no trained weights"; a
     # caller that passes a populated dict means "these are the weights, use
     # them". The two must not collapse into the same code path, because the
@@ -229,7 +268,7 @@ def build_nir_graph(graph: IRGraph,
         return (total,)
 
     for n in graph.nodes:
-        nid = _safe(n.id)
+        nid = _nid(n.id)
         name_of[n.id] = nid
         if n.op == "input":
             # NIR stores shapes as integer arrays, not zero-filled tensors
@@ -367,9 +406,17 @@ def build_nir_graph(graph: IRGraph,
             report["unsupported"].append({"node": nid, "op": n.op,
                                           "reason": "no NIR primitive"})
 
+    # ---- what the terminals ended up being called (original -> emitted)
+    if terminal_names is not None:
+        report["terminals"] = {
+            op: {"original": next((n.id for n in graph.nodes if n.op == op), None),
+                 "emitted": alias.get(next((n.id for n in graph.nodes if n.op == op), ""), None)}
+            for op in ("input", "output")
+        }
+
     # ---- pin every node's declared types from the IR (NIR validates them)
     for n in graph.nodes:
-        nid = _safe(n.id)
+        nid = _nid(n.id)
         if n.op in ("input", "output") or nid not in nodes:
             continue
         if n.op == "dense":
@@ -386,7 +433,7 @@ def build_nir_graph(graph: IRGraph,
     carriers: Dict[str, List[str]] = {}
     inserted_flatten: List[str] = []
     for n in graph.nodes:
-        nid = _safe(n.id)
+        nid = _nid(n.id)
         srcs: List[str] = []
         for i in n.inputs:
             srcs.extend(carriers.get(i, [i]))
@@ -394,7 +441,7 @@ def build_nir_graph(graph: IRGraph,
             carriers[n.id] = srcs
             continue
         for s in srcs:
-            if _safe(s) not in nodes or nid not in nodes:
+            if _nid(s) not in nodes or nid not in nodes:
                 continue
             src_node = graph.node(s)
             # A dense layer fed by a 3-D tensor relies on the implicit flatten
@@ -411,10 +458,10 @@ def build_nir_graph(graph: IRGraph,
                 if synth not in nodes:
                     nodes[synth] = _flatten_node(src_node.shape)
                     inserted_flatten.append(synth)
-                edges.append((_safe(s), synth))
+                edges.append((_nid(s), synth))
                 edges.append((synth, nid))
             else:
-                edges.append((_safe(s), nid))
+                edges.append((_nid(s), nid))
         carriers[n.id] = [n.id]
 
     edges = [e for e in dict.fromkeys(edges) if e[0] != e[1]]
@@ -519,7 +566,8 @@ def _downgrade_dialect(path: str, compat: str) -> List[str]:
 def export_nir(graph: IRGraph, path: str,
                weights: Optional[Dict[str, Any]] = None,
                strict: bool = False,
-               compat: str = "1.0.4") -> Dict[str, Any]:
+               compat: str = "1.0.4",
+               target: Optional[str] = None) -> Dict[str, Any]:
     """Write a ``.nir`` file (or a JSON sidecar if NIR is unavailable).
 
     After writing, the file is read *back from disk* and diffed against what
@@ -537,13 +585,23 @@ def export_nir(graph: IRGraph, path: str,
     ``np.zeros_like(v_threshold)`` — dropping it when it *is* zero costs nothing
     and buys readability on every 1.0.x release and every frontend built
     against them.
+
+    ``target`` shapes the file for one specific downstream consumer instead of
+    the bare standard. Only ``"snn-mlir"`` is defined, and all it does is rename
+    the terminals (see :func:`build_nir_graph`); the graph itself is unchanged,
+    so a targeted file is still a valid ``.nir``.
     """
+    if target not in (None, "snn-mlir"):
+        raise SNNError(f"unknown export target {target!r}",
+                       hint="known targets: None (plain NIR), 'snn-mlir'")
     if not HAS_NIR:
         payload = {"format": "snndsl-json-fallback", "graph": graph.to_dict()}
         with open(path + ".json", "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, default=str)
         raise RuntimeError("nir package missing; wrote JSON fallback instead")
-    nir_graph, report = build_nir_graph(graph, weights)
+    _terms = ("input", "output") if target == "snn-mlir" else None
+    nir_graph, report = build_nir_graph(graph, weights, terminal_names=_terms)
+    report["target"] = target
     # A .nir file has no field for "run me T times". Our graph is already a
     # single-step description, so the step count exists only in the source
     # program; if we drop it here, everything downstream (including our own
@@ -555,6 +613,14 @@ def export_nir(graph: IRGraph, path: str,
     meta.setdefault("snndsl.dt", str(getattr(graph.temporal, "dt", "")))
     meta.setdefault("snndsl.program", str(getattr(graph, "name", "")))
     meta.setdefault("snndsl.schedule", "one step per node; repeat 1..T")
+    if report.get("terminals"):
+        # the rename must be recoverable from the file alone: a reader that
+        # thinks in terms of the original program should not have to diff names
+        meta.setdefault("snndsl.terminals", json.dumps(report["terminals"],
+                                                       sort_keys=True))
+    if report.get("target"):
+        meta.setdefault("snndsl.target", str(report["target"]))
+
     if hasattr(nir_graph, "nodes"):
         import nir as _nir
         nir_graph = _nir.NIRGraph(nodes=dict(nir_graph.nodes),

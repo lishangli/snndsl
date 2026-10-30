@@ -14,6 +14,24 @@ its numbers are checkable:
 
 ### Added
 
+- **SNN-MLIR 互通（已实测）**：`snndsl export --target snn-mlir` 产出的 `.nir` 能直接过
+  `snn-mlir check`（10/10 示例结论与预检一致）、被 lower 成 SNN-dialect MLIR、被 codegen
+  成 C 驱动。lower 之后仍是**一个 `func.func`、零个 `scf.for`**，膜电位是函数参数——
+  另一个项目独立得出了和本仓库 `PYTHON_FRONTEND.md` §0 相同的结论。
+  `build/main.c` 的循环上界等于我们写进 `temporal.steps` 的 T。
+- **`backends/snn_mlir.py` 的预检**：不是「后端会不会拒」，而是「转换之后跑的还算不算这张
+  网络」。返回 `accepts` / `faithful` 两个判断。十个示例里后端对**三个**说 `supported`，
+  而那三个已经不是原网络（`maxpool_as_avgpool` × 2、`neuron_downgraded_to_li` × 1）。
+- 一条最隐蔽的规则：SNN-MLIR 从 `dt = tau / r` 反推时间步，所以神经元输入增益不是 1 时
+  （`v = v*(1-dt/tau) + 2*i` 导出 `r = 4`）它会把 `decay` 从 0.5 读成 0.75，并把输入增益
+  丢掉，仍然返回 `supported`。预检拦下，测试里断言了 0.5 / 0.75 两个数
+  （`test_input_gain_rule_names_the_decay_the_backend_will_use`）。
+- `examples/hw_chain.py`：一条命令跑完七段，逐步打印产物；`--sweep` 对拍全部示例。
+- `docs/SNN_MLIR.md`：命令输出、源码行号、断点原因（`snn-opt` 不在 PyPI，同名包是另一个
+  SOCP 求解器）。
+- `tests/test_snn_mlir_interop.py` 13 条；全量 150 → **163 passed**。
+- 可选依赖 `[interop]`（`snn-mlir>=1.0`）；`snndsl.__version__` 0.4.0 → **0.5.0**。
+
 - **`forward` 前端（`snndsl.Module`）**：网络可以按写 ANN 的方式描述——
   `class Net(snn.Module)` + `input_shape` / `steps` + `def forward(self, x)`。
   `forward` 描述**一个时间步**，T 由编译器套上去，所以图不随 T 膨胀。
@@ -31,11 +49,6 @@ its numbers are checkable:
   文件里唯一的 `snndsl.Module` 子类；有两个子类时报错要求指明，不猜。
 - `snndsl.__version__` 0.3.0 → 0.4.0；`tests/test_forward_front.py` 17 条，
   全量 133 → **150 passed**。
-
-### Fixed
-
-- `Net.encode()` 没有往 `graph.encoders` 写盘，导致 `to_snn()` 丢掉 `encoder` 块
-  （图能编译，但 `.snn` 往返少一段）。现在补上，往返后的 op 序列逐项相同。
 
 - `docs/PYTHON_FRONTEND.md` §0「`snn.Net` 是什么」：把一直靠口头解释的层次关系写成
   可核对的一节。实测 `type(net)` 是 `snndsl.pyfront.Net`、`isinstance(net, nn.Module)`
@@ -67,6 +80,12 @@ its numbers are checkable:
   「两种写法」不是口号。
 
 ### Fixed
+
+- **`snndsl export x.snn` 会写出一个叫 `build`、没有扩展名的文件。** `export` 复用了
+  `build`/`run` 的参数组，于是继承了 `-o` 的默认值 `"build"`；不传 `-o` 时输出路径就是
+  `build`，旁边再掉一个 `build.report.json`。现在默认按输入文件名派生。
+- `Net.encode()` 没有往 `graph.encoders` 写盘，导致 `to_snn()` 丢掉 `encoder` 块
+  （图能编译，但 `.snn` 往返少一段）。现在补上，往返后的 op 序列逐项相同。
 
 - **两条 `spike` 指向同一变量时，第一条静默失效**。在 LIF 上改 ALIF 时忘了删旧行，
   会得到两条 `spike s = ...`；语义检查不报，IR 两条都留，`forward` 里 `s` 被赋值

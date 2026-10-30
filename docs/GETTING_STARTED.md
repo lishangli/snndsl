@@ -36,7 +36,7 @@ snndsl doctor
 component      status                       required
 ------------------------------------------------------
 python         3.11.1                       yes
-snndsl         0.4.0                        yes
+snndsl         0.5.0                        yes
 numpy          2.3.5                        yes
 torch          2.10.0+cu128                 no
 torchvision    0.25.0+cu128                 no

@@ -284,7 +284,7 @@ PyTorch 和 nirtorch/snnTorch，都在软件层；它是唯一能判"软件对�
 | **A. 读 PyTorch** | `torch.export`/FX → 我们的 IR，`snndsl deploy model.py` | 中（算子匹配 + 三家 LIF 模块识别） | **最高**：把"学我的语法"换成"对现有模型跑一条命令" | 未做 |
 | **B. 读 NIR** | `.nir` 当输入，不只当输出 | 低（`nir.read` + 逆向映射） | 让我们能检查 Lava/Norse/snnTorch 产出的图，从自家检查器变成第三方检查器 | 未做 |
 | **C. 发 MLIR** | 输出 `builtin/func/memref/arith/scf` 文本 | 低（纯文本，不 build LLVM） | 借 MLIR 生态的后端；`.snn → MLIR → 裸机` 这条路不用自己修 | **已做**，见 §7.5 |
-| **D. 上游规范化** | 把 tau 离散化 / 每步脉冲数 / reset 形式写成 NIR 提案，测试向量当 conformance suite | 中（主要是写与推） | 痛点从"我们的差异"变成"标准的缺口"，我们成为参考实现 | 未做 |
+| **D. 上游规范化** | 把 tau 离散化 / 每步脉冲数 / reset 形式写成 NIR 提案，测试向量当 conformance suite | 中（主要是写与推） | 痛点从"我们的差异"变成"标准的缺口"，我们成为参考实现 | 未做，但 §7.8 已经攒下实证材料 |
 
 A 和 B 的区别值得说清：A 是拿用户，B 是拿同行。两个都要，A 先做——没有人会为了用检查器
 而重写模型，这一点 SNN-MLIR 的 `snn-mlir check model.nir` 已经验证过了：他们的入口是零成本的。
@@ -384,6 +384,25 @@ memref 类型的函数参数。那是边界。边界用什么表示——栈、D
 在那之前，`.snn` 的价值不在"另一种写法"，在于它是唯一能在训练开始前提出这些问题的地方。
 
 ---
+
+### 7.8 已经实测的：把图交给 SNN-MLIR 之后
+
+§7.5 是我们自己发 MLIR；这条路走通了不等于生态接得上。所以又试了另一条：不自己写
+lowering，把 `.nir` 直接喂给 SNN-MLIR，让它 lower、让它生成 C 驱动。
+
+结论一句话：**能接，但"能接"和"跑的是同一张网"是两个问题**，而后者现在没有任何工具在管。
+
+- 唯一不兼容的地方是终端节点名：对方按字符串 `"input"`/`"output"` 找入口，而 NIR 标准用
+  `NIRGraph.inputs`。让名字即可，原名字留在 metadata 里。
+- T 不在 `.nir` 里，跑 T 次的语义是通过**输入张量的第 0 维**（`int8 [T, N]`）传过去的。
+- lower 之后仍是一个 `func.func`、零个 `scf.for`，膜电位是函数参数——和 §7.5 那份自己写的
+  MLIR 是同一个结论，由另一个项目独立得出。
+- 十个示例对拍：`accepts` 与后端判断 10/10 一致；其中 **3 个示例后端说 `supported`
+  但网络已经不是原来那张**（maxpool 被写成 avgpool、ALIF 被写成 LI）。这一层检查别处没有。
+- 最后一步 `snn-mlir run` 需要 `snn-opt`，它不在 PyPI 上（同名包是另一个 SOCP 求解器），
+  要从 MLIR/LLVM 源码编。所以链路终点是 `build/` 目录，不是 `results.csv`。
+
+细节、命令输出和源码行号：**[`SNN_MLIR.md`](SNN_MLIR.md)**。
 
 ## 8. 数据来源与局限
 
