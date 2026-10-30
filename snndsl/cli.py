@@ -21,11 +21,46 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import torch
 
 
+def _note_reset_mismatch(r) -> None:
+    """Say out loud when a neuron's header and its body disagree.
+
+    ``deploy`` reports this as a blocker, and it should stay a blocker there:
+    a network whose declared reset is not the one it implements is not
+    deployable. But ``build`` is the command people run first, and a build
+    that succeeds in silence answers a question it never checked. The
+    contradiction is only visible here because the IR keeps both values --
+    the declaration and the behaviour -- instead of collapsing them into one
+    semantic, which is exactly what an MLIR op would do.
+
+    The recogniser is the NIR path's, not a second opinion: two
+    implementations of "what is this neuron" would drift.
+    """
+    from .backends.nir_export import recognise_lif
+
+    graph = r.graph
+    for node in graph.nodes:
+        if node.op != "neuron":
+            continue
+        lif = recognise_lif(graph, node, dt=graph.temporal.dt)
+        if not lif:
+            continue
+        declared = lif.get("declared_reset", "")
+        actual = lif.get("reset_mode", "")
+        if declared and actual not in ("", "unknown") and declared != actual:
+            print(
+                f"\nwarning: neuron {node.id} declares reset={declared!r} but its "
+                f"equations implement reset={actual!r}. The header is "
+                f"documentation; the body is what runs.\n"
+                f"         `snndsl deploy` treats this as a blocker."
+            )
+
+
 def _cmd_build(args) -> int:
     from .artifacts import export_artifacts
     from .pipeline import compile_file
     r = compile_file(args.file, passes=args.passes)
     print(r.summary())
+    _note_reset_mismatch(r)
     paths = export_artifacts(r, args.out)
     print("\nartifacts:")
     for kind, p in paths.items():

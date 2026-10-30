@@ -77,6 +77,73 @@ def test_build_succeeds_with_torch_blocked(tmp_path):
     assert "ModuleNotFoundError" not in proc.stderr
 
 
+# A header that says zero reset and a body that subtracts. Both are legal on
+# their own; together they are the bug this project exists to catch.
+_LIAR = """\
+program liar
+const T = 4
+const H = 8
+temporal:
+    steps = T
+    dt = 1.0
+    reset = zero
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v - s * v_th
+pipeline:
+    input  x  : 4
+    encode x  -> rate with gain=1.0
+    dense  h  : H <- x  with scale=1.0
+    neuron h  -> LIF
+    dense  y  : 2 <- h  with scale=1.0
+    output out <- y with readout=spikes
+"""
+
+
+def test_build_warns_when_the_header_lies_about_reset(tmp_path):
+    """A contradiction must not leave the first command silent.
+
+    ``deploy`` already reports this as a blocker, and that is the right verdict
+    — but ``build`` is what people run first, and a build that succeeds without
+    a word answers a question it never asked.
+
+    The warning is only possible because the IR keeps the declaration and the
+    behaviour as *two* values. An IR that assigns one semantic per operation
+    could not represent the disagreement at all: there would be nothing to
+    compare, because the header would have been resolved away on the way in.
+    """
+    prog = tmp_path / "liar.snn"
+    prog.write_text(_LIAR, encoding="utf-8")
+    proc = _run(
+        f"""
+        from snndsl.cli import main
+        raise SystemExit(main(["build", {str(prog)!r}, "-o", "out"]))
+        """,
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "declares reset='zero'" in proc.stdout, proc.stdout
+    assert "implement reset='subtract'" in proc.stdout, proc.stdout
+
+
+def test_build_stays_quiet_when_header_and_body_agree(tmp_path):
+    """The warning has to be rare, or it becomes noise and gets ignored."""
+    proc = _run(
+        f"""
+        from snndsl.cli import main
+        raise SystemExit(main(["build", {os.path.join(EXAMPLES, "mnist_mlp.snn")!r},
+                               "-o", "out"]))
+        """,
+        cwd=tmp_path,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "declares reset=" not in proc.stdout
+
+
 def test_missing_backend_is_a_diagnostic_not_a_traceback(tmp_path):
     """Asking for training without torch explains the fix instead of crashing."""
     proc = _run(
