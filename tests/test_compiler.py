@@ -453,6 +453,88 @@ class TestDiagnostics(unittest.TestCase):
             self.fail("expected an error")
 
 
+class TestNotAnSnndslNet(unittest.TestCase):
+    """A file exposing an ordinary ``nn.Module`` must be rejected, not half-read.
+
+    This is the trap that matters most for someone coming from an ANN
+    background: they write ``class SNN(nn.Module)``, name the instance ``net``,
+    and expect it to work. ``torch.nn.Module`` has had a ``compile`` method
+    since 2.0, so a duck-typed ``hasattr(net, "compile")`` check accepted it and
+    then called ``torch.compile`` instead -- with kwargs it raised a TypeError
+    about ``passes``, without kwargs it **returned None silently**.
+    """
+
+    SOURCE = """
+import torch
+import torch.nn as nn
+
+
+class LIF(nn.Module):
+    def __init__(self, tau=2.0, v_th=1.0):
+        super().__init__()
+        self.tau, self.v_th = tau, v_th
+
+    def forward(self, x):
+        v = 0.0
+        for _ in range(4):
+            v = v * (1 - 1.0 / self.tau) + x
+            s = (v > self.v_th).float()
+            v = v * (1 - s)
+        return s
+
+
+class SNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc = nn.Linear(16, 4)
+        self.a = LIF()
+
+    def forward(self, x):
+        return self.a(self.fc(x))
+
+
+net = SNN()
+"""
+
+    def _write(self, tmpdir):
+        path = os.path.join(tmpdir, "std_snn.py")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(self.SOURCE)
+        return path
+
+    def test_nn_module_is_rejected_by_name(self):
+        from snndsl.pipeline import compile_python_file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir)
+            with self.assertRaises(SNNError) as ctx:
+                compile_python_file(path)
+        msg = str(ctx.exception)
+        self.assertIn("SNN", msg)                 # the class it found
+        self.assertIn("snndsl.Net", msg)          # the type it wanted
+
+    def test_never_returns_none(self):
+        """The old bug: no kwargs -> torch.compile -> None, no error at all."""
+        from snndsl.pipeline import compile_python_file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir)
+            try:
+                result = compile_python_file(path)
+            except SNNError:
+                return                            # correct: refused
+            self.fail(f"silently returned {result!r} instead of refusing")
+
+    def test_error_is_not_a_torch_type_error(self):
+        from snndsl.pipeline import compile_python_file
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write(tmpdir)
+            try:
+                compile_python_file(path, passes=None)
+            except TypeError as exc:
+                self.fail(f"leaked torch's TypeError: {exc}")
+            except SNNError:
+                pass
+
+
 class TestUnsupportedOp(unittest.TestCase):
     """An op the grammar accepts but the backend never lowered must say so.
 

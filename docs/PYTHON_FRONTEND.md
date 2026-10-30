@@ -11,10 +11,60 @@
 > 结构的循环节点，再从图里认出 SNN 语义**。这两件事没有任何现成工具做，
 > 因为所有现成工具都在"时间维已经消失"之后才接手。
 
-## 0. `snn.Net` 是什么：一张图纸，不是一个网络
+## 0. 网络怎么描述：三种写法，工具只认前两种
 
-这一节是为了消掉一个反复出现的误解——把 `snn.Net` 当成"本仓库自己又造了一个
-`nn.Module`"。它不是。实测：
+从 ANN 过来的人，心里的"用 Python 描述网络"大概是这个：
+
+```python
+class SNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 256)
+        self.a1  = LIF()
+    def forward(self, x):
+        for t in range(T):        # 时间循环
+            ...
+```
+
+**这种写法本工具读不了，会明确拒绝**（实测）：
+
+```console
+$ snndsl deploy std_snn.py
+std_snn.py: error[general]: std_snn.py exposes SNN, not snndsl.Net
+    hint: this tool does not read nn.Module directly -- build the graph with
+          snndsl.Net, or return one from build(); see docs/PYTHON_FRONTEND.md §0
+```
+
+不是不想做，是这条路还没接（§3.2 是待办）。`nn.Module` 给你的是**一段前向计算**，
+时间维是 Python `for`；要把它变成 IR，得先 `torch.export` + `hop.scan`——
+§1 的实测说明了为什么 `for` 展开后图不可用。这一步没有现成工具，所以是"未做"，
+不是"不支持"。
+
+所以现在能写的是这两种：
+
+| 你写的东西 | 工具怎么处理 | 能编译 |
+|---|---|---|
+| `.snn` 文本 | 解析成 IR | 能 |
+| `snn.Net` 调用序列（下面这种） | 方法直接往 IR 里加节点 | 能 |
+| `class SNN(nn.Module)` | 按类型拒绝，说明原因 | **不能** |
+
+```python
+net = snn.Net("mnist", steps=8)
+x = net.encode(net.input(1, 28, 28), "rate")
+h = net.neuron(net.dense(x, 256), snn.LIF(tau=2.0))
+net.output(h)
+```
+
+两种能写的，产出同一张图、走同一个 `finalize()`、生成同一份 `.py`。
+
+### `snn.Net` 是图纸，不是网络
+
+为什么不用 `nn.Module` 那种写法？因为 `forward` 是**运行时**才执行的：你在里面写
+`net.dense(...)`，只有真的喂数据跑起来才会发生，拿不到静态图；而在 `__init__` 里
+`self.fc1 = nn.Linear(...)` 只给出了层，没给出**连接关系**。编译要的是后者。
+
+所以要有一个"只记录、不计算"的阶段——这就是 `snn.Net`。它连 `nn.Module` 都不是：
+实测 `isinstance(net, nn.Module)` 为 `False`、没有 `parameters()`：
 
 ```console
 >>> type(net)
@@ -27,8 +77,8 @@ False
 dict_keys(['graph', '_counts', '_used_neurons', '_closed'])
 ```
 
-它只持有 `graph`——也就是 IR。**它没有权重、没有 `forward`、没有参数**。
-`net.dense(...)` 不分配任何张量，只是在 `graph` 里追加一个节点并返回一个句柄：
+它只持有 `graph`——也就是 IR。`net.dense(...)` 不分配任何张量，只是在 `graph` 里
+追加一个节点并返回一个句柄：
 
 ```python
 def _add(self, op, inputs, shape, attrs, ...):

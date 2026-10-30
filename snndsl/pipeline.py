@@ -177,11 +177,23 @@ def compile_python_file(path: str, **kwargs) -> CompileResult:
     builder = getattr(mod, "build", None)
     if callable(builder):
         net = builder()
-    if net is None or not hasattr(net, "compile"):
+    if net is None:
         raise SNNError(
             f"{os.path.basename(path)} exposes no network",
             hint="expose either a module-level `net` or a zero-argument "
                  "`build()` that returns snndsl.Net")
+    # Duck-typing on ``compile`` is not safe here: torch.nn.Module has had a
+    # ``compile`` method since 2.0 (the torch.compile entry point), so an
+    # ordinary PyTorch SNN would be accepted and then silently returned as
+    # None. Match the type instead.
+    from .pyfront import Net as _Net
+    if not isinstance(net, _Net):
+        raise SNNError(
+            f"{os.path.basename(path)} exposes {type(net).__name__}, "
+            f"not snndsl.Net",
+            hint="this tool does not read nn.Module directly -- build the graph "
+                 "with snndsl.Net, or return one from build(); see "
+                 "docs/PYTHON_FRONTEND.md §0")
     return net.compile(**kwargs)
 
 

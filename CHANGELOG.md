@@ -45,6 +45,16 @@ its numbers are checkable:
 
 ### Fixed
 
+- **一个普通 `nn.Module` 会被当成 `snndsl.Net` 收下，然后要么崩要么静默返回 `None`**。
+  `compile_python_file` 用 `hasattr(net, "compile")` 判断类型，而 `torch.nn.Module`
+  自 2.0 起也有 `compile`（`torch.compile` 的入口）。于是从 ANN 过来的人写
+  `class SNN(nn.Module)`、把实例命名成 `net`、直接 `snndsl deploy x.py`：
+  带 kwargs 时得到 `TypeError: compile() got an unexpected keyword argument 'passes'`，
+  **不带 kwargs 时 `net.compile()` 原地生效并返回 `None`，一路静默**。现在按类型判断
+  （`isinstance(net, snndsl.Net)`），报一句能看懂的话：
+  `exposes SNN, not snndsl.Net`，hint 指到 `docs/PYTHON_FRONTEND.md` §0。
+  `tests/test_compiler.py::TestNotAnSnndslNet` 三条锁住（含"不许是 TypeError"、
+  "不许静默返回 None"）。
 - **`decode` 一用就崩在 codegen**：关键字在 `lexer.py`、lowering 在 `sema._op_decode`、
   op 在 `ir.IO_OPS`、序列化在 `serialize._REBIND_OPS`，唯独 `torch_codegen.py` 没有
   `_op_decode`。一份语法合法的 `.snn` 因此得到

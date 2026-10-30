@@ -34,6 +34,10 @@ Net    = snn.load_module(result, "mnist.py")    # 到这里才有 forward 和权
 （203,530 个参数，`state_dict` 里是 `w_h1 / b_h1 / w_y / b_y`）。
 两种写法（上面这段 Python，和等价的 `.snn` 文本）建的是同一张图，共用同一个
 `finalize()`，所以不会在优化或代码生成阶段分叉。
+
+**边界**：`class SNN(nn.Module)` 那种写法本工具读不了，会按类型拒绝
+（`exposes SNN, not snndsl.Net`）。`nn.Module` 的 `forward` 是运行时才执行的，
+拿不到静态图；接这条路要先 `torch.export` + `hop.scan`，是待办而不是已有功能。
 细节：[`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) §0。
 
 ## 它补的是哪一段
