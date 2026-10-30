@@ -259,8 +259,8 @@ class TemporalSchedule(Pass):
                      "layer_steps": layers * t}
         rep.changed = True
         rep.notes.append(
-            f"T={t} <={'<=' if t <= self.THRESHOLD else '>'} {self.THRESHOLD} -> "
-            f"{graph.temporal.strategy} (saves {layers * t} loop iterations)"
+            f"T={t} <= {self.THRESHOLD} -> unrolled (no python loop over time, "
+            f"{layers * t} layer-steps emitted inline)"
             if t <= self.THRESHOLD else
             f"T={t} > {self.THRESHOLD} -> looped (keeps code size at {layers} layers "
             f"instead of {layers * t})")

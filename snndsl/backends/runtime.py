@@ -23,6 +23,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..errors import BackendError
+
 # --------------------------------------------------------------- surrogates
 
 
@@ -186,11 +188,170 @@ def _default_root() -> str:
     return "./data"
 
 
+_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".bmp", ".pgm", ".tif", ".tiff", ".webp")
+_ARRAY_KEYS = (("x_train", "y_train"), ("train_x", "train_y"), ("x", "y"))
+_TEST_KEYS = (("x_test", "y_test"), ("test_x", "test_y"))
+
+
+def _as_input_tensor(arr: np.ndarray, input_shape: Tuple[int, ...]) -> torch.Tensor:
+    """Turn a raw array into the (N, ...) float tensor the graph expects.
+
+    Integer arrays are scaled by 1/255 - that is the only convention every
+    image dataset shares, and guessing anything else would be worse than
+    documenting it.
+    """
+    a = np.asarray(arr)
+    if a.dtype == np.uint8 or (np.issubdtype(a.dtype, np.integer) and a.max(initial=0) > 1):
+        a = a.astype(np.float32) / 255.0
+    t = torch.as_tensor(np.ascontiguousarray(a), dtype=torch.float32)
+    if len(input_shape) == 1:
+        return t.reshape(t.shape[0], -1)
+    if t.dim() == 3:                       # (N, H, W) of a single-channel dataset
+        t = t.unsqueeze(1)
+    return t
+
+
+def _array_loader(path: str, input_shape: Tuple[int, ...], seed: int):
+    """`.npz` / `.npy` of pre-loaded tensors: x_train/y_train[, x_test/y_test]."""
+    if path.endswith(".npz"):
+        blob = np.load(path)
+        keys = next((k for k in _ARRAY_KEYS if k[0] in blob and k[1] in blob), None)
+        if keys is None:
+            raise BackendError(
+                f"{path} has no arrays named x_train/y_train",
+                hint=f"found {sorted(blob.files)}; rename them to x_train/y_train "
+                     "(and optionally x_test/y_test)")
+        x_tr = _as_input_tensor(blob[keys[0]], input_shape)
+        y_tr = torch.as_tensor(np.asarray(blob[keys[1]]), dtype=torch.long)
+        found = next((k for k in _TEST_KEYS if k[0] in blob and k[1] in blob), None)
+        if found is not None:
+            x_te = _as_input_tensor(blob[found[0]], input_shape)
+            y_te = torch.as_tensor(np.asarray(blob[found[1]]), dtype=torch.long)
+            return x_tr, y_tr, x_te, y_te, "npz"
+    else:
+        # a bare .npy has inputs only; inventing labels would be worse than refusing
+        raise BackendError(
+            f"{path} holds inputs but no labels",
+            hint="use a .npz with x_train/y_train, or a folder of <class>/*.png")
+    g = torch.Generator().manual_seed(seed)
+    idx = torch.randperm(x_tr.shape[0], generator=g)
+    cut = int(0.8 * x_tr.shape[0])
+    return x_tr[idx[:cut]], y_tr[idx[:cut]], x_tr[idx[cut:]], y_tr[idx[cut:]], "npz"
+
+
+def _folder_loader(path: str, input_shape: Tuple[int, ...], seed: int):
+    """Directory of ``<class>/*.png``; a ``train/`` + ``test/`` split if present."""
+    try:
+        import torchvision
+        import torchvision.transforms as T
+    except Exception as exc:                       # pragma: no cover - env dependent
+        raise BackendError(
+            f"reading image folders needs torchvision ({exc})",
+            hint='pip install "snndsl[full]"') from exc
+
+    tf: List[Any] = []
+    if len(input_shape) == 3:
+        c, h, w = (int(v) for v in input_shape)
+        if c == 1:
+            tf.append(T.Grayscale(num_output_channels=1))
+        elif c == 3:
+            tf.append(T.Lambda(lambda im: im.convert("RGB")))
+        tf.append(T.Resize((h, w)))
+    tf.append(T.ToTensor())
+    xform = T.Compose(tf)
+
+    def _ds(root):
+        return torchvision.datasets.ImageFolder(root, transform=xform)
+
+    def _subdirs(p):
+        return sorted(d for d in os.listdir(p)
+                      if os.path.isdir(os.path.join(p, d))) if os.path.isdir(p) else []
+
+    train_dir = os.path.join(path, "train")
+    if not _subdirs(train_dir):                    # no explicit split -> random 80/20
+        full = _ds(path)
+        n = len(full)
+        if n < 2:
+            raise BackendError(f"{path} holds no images",
+                               hint="expected <path>/<class>/*.png")
+        g = torch.Generator().manual_seed(seed)
+        idx = torch.randperm(n, generator=g).tolist()
+        cut = int(0.8 * n)
+        tr = torch.utils.data.Subset(full, idx[:cut])
+        te = torch.utils.data.Subset(full, idx[cut:])
+        x_tr, y_tr = _stack(tr)
+        x_te, y_te = _stack(te)
+        return x_tr, y_tr, x_te, y_te, "folder"
+    tr = _ds(train_dir)
+    test_dir = next((os.path.join(path, s) for s in ("test", "val", "valid")
+                     if _subdirs(os.path.join(path, s))), None)
+    if test_dir is None:
+        g = torch.Generator().manual_seed(seed)
+        idx = torch.randperm(len(tr), generator=g).tolist()
+        cut = int(0.8 * len(tr))
+        full_tr = tr
+        tr = torch.utils.data.Subset(full_tr, idx[:cut])
+        te = torch.utils.data.Subset(full_tr, idx[cut:])
+    else:
+        te = _ds(test_dir)
+    x_tr, y_tr = _stack(tr)
+    x_te, y_te = _stack(te)
+    return x_tr, y_tr, x_te, y_te, "folder"
+
+
+def _stack(ds):
+    """Materialise a small image dataset into tensors (folders are usually small)."""
+    xs, ys = [], []
+    for i in range(len(ds)):
+        x, y = ds[i]
+        xs.append(x)
+        ys.append(int(y))
+    return torch.stack(xs), torch.tensor(ys, dtype=torch.long)
+
+
+def _custom_source(name: str) -> Optional[str]:
+    """Return ``'folder'`` / ``'array'`` when ``name`` points at something on disk."""
+    raw = name
+    for prefix in ("folder:", "imagefolder:", "images:"):
+        if raw.lower().startswith(prefix):
+            return "folder"
+    for prefix in ("npz:", "npy:", "array:"):
+        if raw.lower().startswith(prefix):
+            return "array"
+    if os.path.isdir(raw) or raw.lower().endswith(_IMAGE_EXTS):
+        return "folder"
+    if raw.lower().endswith((".npz", ".npy")):
+        return "array"
+    return None
+
+
+def _strip_prefix(name: str) -> str:
+    for prefix in ("folder:", "imagefolder:", "images:", "npz:", "npy:", "array:"):
+        if name.lower().startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
 def build_dataloaders(cfg: Dict[str, Any], input_shape: Tuple[int, ...],
                       batch_size: int = 128, root: Optional[str] = None,
                       num_workers: int = 0) -> Dict[str, Any]:
-    """Build loaders from the ``train:`` block (dataset=mnist/fashion/cifar/synthetic)."""
-    name = str(cfg.get("data", cfg.get("dataset", "mnist"))).lower()
+    """Build loaders from the ``train:`` block.
+
+    ``data =`` accepts four things:
+
+    * ``mnist`` / ``fashion_mnist`` / ``cifar10`` - downloaded via torchvision
+    * ``synthetic`` - a separable toy task, for smoke tests only
+    * a directory of ``<class>/*.png`` images (optionally with ``train/`` and
+      ``test/`` subdirectories); images are resized to the declared input shape
+    * a ``.npz`` holding ``x_train``/``y_train`` (and optionally
+      ``x_test``/``y_test``) as uint8 or float arrays
+
+    Anything else is an error. Falling back to the synthetic task would produce
+    a model that has nothing to do with the user's data, and a plausible-looking
+    accuracy number attached to the wrong dataset is worse than a failure.
+    """
+    name = str(cfg.get("data", cfg.get("dataset", "mnist"))).strip()
+    low = name.lower()
     root = root or str(cfg.get("root") or _default_root())
     torch.manual_seed(int(cfg.get("seed", 0)))
     flat = len(input_shape) == 1
@@ -212,12 +373,36 @@ def build_dataloaders(cfg: Dict[str, Any], input_shape: Tuple[int, ...],
             ds, batch_size=max(batch_size, 256), shuffle=False,
             num_workers=num_workers)
 
-    if tv is not None and name in ("mnist", "fashion_mnist", "fashion", "cifar10", "cifar"):
+    kind = _custom_source(name)
+    if kind is not None:
+        path = os.path.expanduser(_strip_prefix(name))
+        if not os.path.exists(path):
+            raise BackendError(
+                f"dataset path {path!r} does not exist",
+                hint="pass a directory of <class>/*.png images or a .npz with "
+                     "x_train/y_train")
+        loader = _folder_loader if kind == "folder" else _array_loader
+        x_tr, y_tr, x_te, y_te, label = loader(path, input_shape, int(cfg.get("seed", 0)))
+        if x_tr.shape[1:] != (() if flat else tuple(input_shape)) and not flat:
+            raise BackendError(
+                f"{path} yields samples of shape {tuple(x_tr.shape[1:])}, "
+                f"but the graph declares {tuple(input_shape)}",
+                hint="change the `input` line in the pipeline block, or resize "
+                     "the data to match")
+        sub = int(cfg.get("subset", 0) or 0)
+        if sub and sub < x_tr.shape[0]:
+            x_tr, y_tr = x_tr[:sub], y_tr[:sub]
+        tr = torch.utils.data.TensorDataset(x_tr, y_tr)
+        te = torch.utils.data.TensorDataset(x_te, y_te)
+        return {"train": _wrap(tr), "test": _wrap_test(te),
+                "kind": label, "flat": flat, "adapt": False}
+
+    if tv is not None and low in ("mnist", "fashion_mnist", "fashion", "cifar10", "cifar"):
         tf = T.Compose([T.ToTensor()])
-        if name == "mnist":
+        if low == "mnist":
             tr = tv.datasets.MNIST(root, train=True, download=True, transform=tf)
             te = tv.datasets.MNIST(root, train=False, download=True, transform=tf)
-        elif name in ("fashion_mnist", "fashion"):
+        elif low in ("fashion_mnist", "fashion"):
             tr = tv.datasets.FashionMNIST(root, train=True, download=True, transform=tf)
             te = tv.datasets.FashionMNIST(root, train=False, download=True, transform=tf)
         else:
@@ -229,7 +414,13 @@ def build_dataloaders(cfg: Dict[str, Any], input_shape: Tuple[int, ...],
             tr = torch.utils.data.Subset(tr, idx)
         # adapt tensor layout to the declared input shape
         return {"train": _wrap(tr), "test": _wrap_test(te),
-                "kind": name, "flat": flat, "adapt": True}
+                "kind": low, "flat": flat, "adapt": True}
+
+    if low not in ("synthetic", "toy"):
+        raise BackendError(
+            f"unknown dataset {name!r}",
+            hint="use mnist | fashion_mnist | cifar10 | synthetic, or a path to a "
+                 "folder of <class>/*.png images, or a .npz with x_train/y_train")
 
     n = int(cfg.get("subset", 0) or 4000)
     classes = int(cfg.get("classes", 10))

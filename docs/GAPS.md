@@ -31,6 +31,9 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 17 | `nir_sim` 拿 torch 当张量库 | **我们的** | 开着 · `--verify` 需要 PyTorch |
 | 18 | `[full]` 缺 nirtorch / snntorch，第三方对照静默跳过 | **我们的** | 已关闭 · CI 里真跑 |
 | 19 | `conv` / `pool` / 残差合并没有 MLIR lowering | **我们的** | 开着 · 报 `MLIRUnsupported`，不近似 |
+| 20 | 时间维在交接口没有归宿 | **上游** nir + **我们的**兼容层 | 兼容层已关（`fold`）；导出侧也已写 T |
+| 21 | `beta → (tau, r)` 有一个自由参数 | **我们的** | 已关（本仓库转换器）；对外部转换器开着 |
+| 22 | 只能训练内置的四个数据集 | **我们的** | 已关闭 · 文件夹 / `.npz`，未知名字报错 |
 
 ---
 
@@ -272,6 +275,11 @@ note: no .mlir file was written - 'conv' has no MLIR lowering in this backend: .
 状态：**兼容层已关，根因开着**。根因是 NIR 没有时间维，属于格式设计选择，
 只能靠上游加一个"这是循环体"的声明；在那之前，`metadata` 是唯一能放 T 的地方。
 
+同一件事的另一半曾经是我们自己的 bug：`snndsl export` 生成的图本来就是单步的，
+却**没有把 T 写进去**，于是连 `snndsl fidelity` 都得让用户手工 `--steps`。现在导出
+同时写 `snndsl.timesteps` / `snndsl.dt` / `snndsl.program`，`fidelity` 直接可读。
+（`tests/test_custom_data.py::test_export_records_the_step_count` 守着它。）
+
 同一段里暴露的两个上游缺陷（都已在我们这一侧兼容，未修上游）：
 
 - `nirtorch` 2.6 的 `Output.input_type = {'input': None}` 让 `nir.write` 在 h5py 里
@@ -294,6 +302,26 @@ snnTorch 的 `Leaky(beta=0.9)` 积分 `v ← beta·v + i`；NIR 的 LIF 积分
 （第一版 `r = 1.0`，折叠后 `differ = 1.0`；改成 `r = tau` 后 `differ = 0`）。
 
 状态：**在我们自己的转换里已关**；对所有外部转换器开着——没有任何工具检查这件事。
+
+---
+
+### 22 · 只能训练内置的四个数据集 —— 我们的 bug
+
+`train:` 块的 `data =` 只认 `mnist` / `fashion_mnist` / `cifar10` / `synthetic`，
+其他任何名字都**静默落到合成数据上**：4000 条可分的高斯团，训练能收敛，
+`test_acc` 是个漂亮的数字，跟用户的数据没有任何关系。
+
+这是本项目最不该犯的那类错——"文件合法、数字好看、语义全错"，而且发生在
+第一次使用时，用户还没有能力分辨。
+
+复现（旧行为已不可复现，改为用测试锁定新行为）：
+`python -m pytest tests/test_custom_data.py -q`（6 条，最后两条分别验证
+"陌生名字必须抛错"和"文件夹 / `.npz` 真的是那份数据"）。
+
+状态：**已关闭**。`data =` 现在接受图片文件夹（`<类别>/*.png`，可再分 `train/`、
+`test/`）与 `.npz`（`x_train`/`y_train`），图片按 `input` 声明的形状自动 resize，
+uint8 按 1/255 归一；**不认识的名字直接抛 `BackendError`**，并给出三种合法写法。
+实测 120 张 3 分类 png、12 epoch、1.0 秒到 95.83%（`docs/GETTING_STARTED.md` 第 3 步）。
 
 ---
 

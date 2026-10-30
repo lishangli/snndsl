@@ -12,6 +12,27 @@ its numbers are checkable:
 
 ## [Unreleased]
 
+### Added
+
+- **`data =` 认你自己的数据**：图片文件夹（`<类别>/*.png`，可再分 `train/` `test/`）
+  与 `.npz`（`x_train`/`y_train`）。图片按 `input` 声明的形状 resize，uint8 按 1/255 归一。
+  之前只有 `mnist`/`fashion`/`cifar10`/`synthetic` 四个名字，**其他任何名字都静默落到
+  合成数据上**——训练照样收敛、`test_acc` 照样好看、和用户的数据毫无关系。
+  现在陌生名字直接抛 `BackendError` 并列出三种合法写法（`docs/GAPS.md` 第 22 条）。
+- `docs/GETTING_STARTED.md` + `examples/e2e.sh`：从「写 30 行网络」到「导出、验证、
+  交给硬件」的一条命令链，每一步都附本机真实输出。`bash examples/e2e.sh` 跑完全流程。
+- `tests/test_custom_data.py`：6 条，锁住"文件夹 / `.npz` 真的是那份数据""陌生名字必须
+  抛错""权重真的被更新过"。
+
+### Fixed
+
+- **`snndsl export` 不写时间步**：导出的图本来就是单步的，但文件里没有一个字节说明
+  要跑几次，连自己的 `snndsl fidelity` 都得让用户手工 `--steps`。现在写
+  `snndsl.timesteps` / `snndsl.dt` / `snndsl.program` 到 `metadata`。
+- `schedule` pass 的提示印成 `T=4 <=<= 4`（条件表达式里多了一个 `<=`）。
+- `snndsl fold` 对"本来就没有重复"的图只说"no p divides the graph"，读起来像失败；
+  现在说明节点数、试过的 p 范围，以及"单步图没有可折的东西"。
+
 ## [0.3.0] - 2026-10-30
 
 ### Added

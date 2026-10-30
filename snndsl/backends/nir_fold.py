@@ -224,8 +224,11 @@ def detect(graph: Any, max_period: Optional[int] = None) -> Period:
         res.body = body[:p]
         return res
 
-    res.reason = ("body is not a repetition of a smaller block: no p divides "
-                  "the graph with matching node parameters")
+    res.reason = (
+        f"body has {len(body)} nodes and no repeated block "
+        f"(tried p=1..{limit}, k>=2); a graph that already describes a single "
+        f"time step has nothing to fold -- files from `snndsl export` are already "
+        f"in that form, files from nirtorch/snnTorch are not")
     return res
 
 

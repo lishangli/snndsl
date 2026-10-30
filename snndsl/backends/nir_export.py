@@ -544,6 +544,22 @@ def export_nir(graph: IRGraph, path: str,
             json.dump(payload, fh, indent=2, default=str)
         raise RuntimeError("nir package missing; wrote JSON fallback instead")
     nir_graph, report = build_nir_graph(graph, weights)
+    # A .nir file has no field for "run me T times". Our graph is already a
+    # single-step description, so the step count exists only in the source
+    # program; if we drop it here, everything downstream (including our own
+    # ``fidelity``) has to guess. metadata is the one slot the format leaves
+    # open, so the number goes there -- as a string, because nir.write stores
+    # metadata as HDF5 datasets and does not round-trip every Python type.
+    meta = dict(getattr(nir_graph, "metadata", {}) or {})
+    meta.setdefault("snndsl.timesteps", str(getattr(graph.temporal, "steps", "")))
+    meta.setdefault("snndsl.dt", str(getattr(graph.temporal, "dt", "")))
+    meta.setdefault("snndsl.program", str(getattr(graph, "name", "")))
+    meta.setdefault("snndsl.schedule", "one step per node; repeat 1..T")
+    if hasattr(nir_graph, "nodes"):
+        import nir as _nir
+        nir_graph = _nir.NIRGraph(nodes=dict(nir_graph.nodes),
+                                  edges=list(nir_graph.edges),
+                                  metadata=meta, type_check=False)
     nir.write(path, nir_graph)
     report["dialect"] = {"requested_min": compat, "dropped_fields": []}
     if compat:

@@ -10,6 +10,10 @@
 **能被 MLIR 工具链读的 `.mlir`**。
 外加一个别人不做的事——回答「这样导出去之后，还是同一个网络吗」，逐脉冲给证据。
 
+> **想先看怎么用**： [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) 是从「写 30 行网络」
+> 到「导出、验证、交给硬件」的一条命令链，或者直接 `bash examples/e2e.sh` 跑完它。
+> 想先知道它值不值得用，继续往下读。
+
 ## 它补的是哪一段
 
 `snnTorch`、`SpikingJelly`、`Norse` 已经能训练 SNN，`NIR` 已经能把 SNN 交给芯片。
@@ -311,8 +315,10 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | `examples/adaptive_lif.snn` | 自定义神经元：双状态变量 + 自适应阈值 + atan 代理梯度 |
 | `examples/residual_snn.snn` | DAG 分支 + `add` 合并 + `direct_input` pass |
 | `examples/mnist_py.py` | Python 前端，与 `.snn` 版本 IR 等价 |
+| `examples/e2e.sh` | 一条命令跑完「预检 → 训练 → 导出 → 验证 → 推理」 |
 
-`examples/TRAINING_AND_INFERENCE.md` 是训练与推理的完整可复现记录，含真实终端输出。
+`examples/TRAINING_AND_INFERENCE.md` 是训练与推理的完整可复现记录，含真实终端输出；
+`examples/e2e.sh` 把「预检 → 训练 → 导出 → 验证 → 推理」串成一条命令。
 
 ## 效果
 
@@ -350,12 +356,13 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | int8 量化 | 是 weight-only PTQ（fake quant），不生成 int8 kernel | 体积与精度损失是实测的；加速取决于部署框架 |
 | `readout=membrane` | 无法无损部署（硬件给脉冲，不给 reset 前膜电位） | 上硬件用 spike readout，或单独加不发放的读出层 |
 | 真实芯片 | 未在 Xylo / Loihi / Speck 上验证，只对过厂商的 Python 神经元 | 定点与位宽行为属于未测项，本地工作改变不了 |
-| 数据集 | 只有 MNIST 系与 CIFAR 的示例 | 训练路径不绑定 MNIST，但别的数据没跑过 |
+| 数据集 | 内置 MNIST / Fashion / CIFAR；也认图片文件夹与 `.npz`（`data =` 写路径即可） | 其他名字直接报错，不会悄悄退回合成数据 |
 
 ## 文档
 
 | 文件 | 内容 |
 |---|---|
+| [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) | **从零到部署的一条命令链**：写网络、训练、导出、验证、换成自己的数据 |
 | [`docs/WHY.md`](docs/WHY.md) | 为什么需要编译层，与已有项目的差异 |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | 编译器内部：前端 → IR → pass → codegen |
 | [`docs/RESULTS.md`](docs/RESULTS.md) | 实测数字与能耗敏感性分析 |
