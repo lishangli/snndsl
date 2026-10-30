@@ -147,7 +147,7 @@ def test_file_carries_the_timestep_count_it_had_no_field_for(tmp_path):
     src = tmp_path / "net.nir"
     nir_fold.save(_export(model), str(src))
 
-    out, per = nir_fold.fold_file(str(src))
+    out, _ = nir_fold.fold_file(str(src))
     again = nir.read(out)
     assert int(again.metadata["snndsl.timesteps"]) == T
     assert len(again.nodes) < len(nir.read(str(src)).nodes)
