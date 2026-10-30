@@ -453,6 +453,54 @@ class TestDiagnostics(unittest.TestCase):
             self.fail("expected an error")
 
 
+class TestDuplicateSpike(unittest.TestCase):
+    """Two spike lines with the same target used to be accepted in silence.
+
+    They lower to two assignments of the same variable in ``forward``, so the
+    first predicate is dead. Found while building a doc example: the generated
+    code contained ``s = surrogate_(v - v_th)`` immediately followed by
+    ``s = surrogate_(v - v_th * 0.5)``, and nothing anywhere said so.
+    """
+
+    SRC = """program dup
+
+temporal:
+    steps = 4
+    dt = 1.0
+    reset = zero
+
+neuron BAD:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    spike s = v > v_th * 0.5
+    v = v * (1 - s)
+
+pipeline:
+    input  x : 1, 4, 4
+    encode x -> rate with gain=1.0
+    dense  h : 8 <- x
+    neuron h -> BAD
+    output h
+"""
+
+    def test_second_spike_line_is_an_error(self):
+        with self.assertRaises(SemaError) as ctx:
+            compile_source(self.SRC)
+        msg = str(ctx.exception)
+        self.assertIn("twice", msg)
+        self.assertIn("s", msg)
+
+    def test_the_error_points_at_the_offending_line(self):
+        with self.assertRaises(SemaError) as ctx:
+            compile_source(self.SRC)
+        diag = getattr(ctx.exception, "diagnostic", None)
+        self.assertIsNotNone(diag)
+        self.assertEqual(diag.line, 14)          # the second `spike s`
+
+
 class TestNotAnSnndslNet(unittest.TestCase):
     """A file exposing an ordinary ``nn.Module`` must be rejected, not half-read.
 

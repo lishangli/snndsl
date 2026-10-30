@@ -102,6 +102,48 @@ SNNError: this Net is already compiled; start a new one
 
 ### 那"网络结构"在哪
 
+**先说一个容易漏的点：结构不是只由 `pipeline:` 描述的。** 一份 `.snn` 里三段都在
+描述结构，缺一段就描述不全：
+
+| 段 | 描述结构的哪一部分 | 产物 | 只删掉它会怎样 |
+|---|---|---|---|
+| `pipeline:` | **拓扑**：节点 + 有向边 | `graph.nodes`，边就是每个节点的 `inputs` | 没有图 |
+| `neuron LIF:` | **算子语义**：状态变量、膜电位方程、阈值、复位、代理梯度 | `NeuronSpec`，挂在 `graph.neurons` | 剩下线性层，不是 SNN |
+| `temporal:` | **时间语义**：`steps` / `dt` / `reset` | `TemporalSpec` | 不知道跑几步、怎么复位 |
+
+中间那块最容易被当成"参数"，它不是。`examples/adaptive_lif.snn` 一个文件里同时
+放了两个神经元模型，节点上直接标着用哪个：
+
+```console
+ALIF: states=['v', 'a']  body=5 条
+LIF : states=['v']       body=3 条
+
+  h1     dense   <- ['x$1']
+  h1$1   neuron  <- ['h1']        # neuron h1 -> ALIF
+  h2     dense   <- ['h1$1']
+  h2$1   neuron  <- ['h2']        # neuron h2 -> ALIF
+  y      dense   <- ['h2$1']
+  y$1    neuron  <- ['y']         # neuron y  -> LIF
+```
+
+换成 ALIF 时**拓扑一个节点都没动**，但每个神经元的状态从 `{v}` 变成 `{v, a}`，
+方程从 3 条变 5 条，生成的 `forward` 多一个 `_st["a"]` 和两行 `a` 的更新。
+**在 ANN 里换激活函数是改配置，在 SNN 里换神经元模型是改状态空间**——这就是为什么
+它必须进结构描述，而不能藏在超参数里。
+
+至于边：IR 里没有单独的 `edges` 列表，每个节点的 `inputs` 就是入边（`ir.py` 只存
+前驱，因为 codegen 按拓扑序输出 `v_h1 = f(v_x$1)`，前驱就是变量名）：
+
+```console
+  x     input   <- []
+  x$1   encode  <- ['x']
+  h1    dense   <- ['x$1']
+  h1$1  neuron  <- ['h1']
+  y     dense   <- ['h1$1']
+  y$1   neuron  <- ['y']
+  out   output  <- ['y$1']
+```
+
 同一张网络有三种身，只有第二种叫"结构"：
 
 | 层 | 是什么 | 谁读 | 有权重吗 |

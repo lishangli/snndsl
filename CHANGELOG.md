@@ -45,6 +45,13 @@ its numbers are checkable:
 
 ### Fixed
 
+- **两条 `spike` 指向同一变量时，第一条静默失效**。在 LIF 上改 ALIF 时忘了删旧行，
+  会得到两条 `spike s = ...`；语义检查不报，IR 两条都留，`forward` 里 `s` 被赋值
+  两次，第一行的阈值判断完全无效，而文件合法、能训练、能导出。现在 `build_neuron_spec`
+  记录已声明的 spike 变量，重复抛 `SemaError` 且行号指向第二条；普通赋值不受限
+  （`v` 在一个 body 里写多次是正常的）。`tests/test_compiler.py::TestDuplicateSpike`
+  两条（`docs/GAPS.md` 第 26 条）。
+
 - **一个普通 `nn.Module` 会被当成 `snndsl.Net` 收下，然后要么崩要么静默返回 `None`**。
   `compile_python_file` 用 `hasattr(net, "compile")` 判断类型，而 `torch.nn.Module`
   自 2.0 起也有 `compile`（`torch.compile` 的入口）。于是从 ANN 过来的人写

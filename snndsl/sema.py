@@ -201,7 +201,19 @@ def build_neuron_spec(decl: "A.NeuronDecl", env: Dict[str, Any],
 
     scope = set(params) | set(states) | {"i", "dt", "t"}
     body: List[Tuple[str, str, str]] = []
+    spike_vars: set = set()
     for stmt in decl.body:
+        if stmt.kind == "spike":
+            # Two spike lines with the same target lower to two assignments to
+            # the same variable: the first one is dead, and nothing in the
+            # output says so. Refuse instead of picking one for the user.
+            if stmt.target in spike_vars:
+                raise SemaError(
+                    f"neuron {decl.name!r} declares spike {stmt.target!r} twice",
+                    line=getattr(stmt, "line", decl.line),
+                    hint="the second line silently overwrites the first; "
+                         "delete one, or emit them under different names")
+            spike_vars.add(stmt.target)
         try:
             if stmt.kind == "spike":
                 src = lower_spike(stmt.expr, scope, sur_kind, sur_alpha)

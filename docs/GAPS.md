@@ -37,6 +37,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 23 | Python 前端表达不了 zero reset | **我们的** | 已关闭 · `LIF(reset=...)`，且 `deploy` 会抓头体不一致 |
 | 24 | 语法接受 `decode`，后端没有 lowering | **我们的** | 报错已可读；**功能仍未实现** |
 | 25 | `nn.Module` 被当成 `snndsl.Net` 收下 | **我们的** | 已关闭 · 按类型判断，报 `exposes SNN, not snndsl.Net` |
+| 26 | 同一变量声明两次 `spike`，第一条静默失效 | **我们的** | 已关闭 · `SemaError`，带行号 |
 
 ---
 
@@ -444,6 +445,35 @@ std_snn.py: error[general]: std_snn.py exposes SNN, not snndsl.Net
 这个 bug 的根源比"漏一个判断"更深：**本工具确实读不了 `nn.Module`**。
 `forward` 是运行时执行的，静态图拿不到；接这条路要先 `torch.export` + `hop.scan`
 （`docs/PYTHON_FRONTEND.md` §1、§3.2）。所以这里只是把误读挡掉，真正的能力缺口在那边。
+
+---
+
+### 26 · 两条 `spike` 指向同一个变量，第一条悄悄失效 —— 我们的 bug
+
+写 neuron 块时忘了删旧行（或者在 LIF 上改 ALIF），会得到两条 `spike s = ...`。
+语义检查一句话不说，IR 里两条都留着，生成的 `forward` 是：
+
+```python
+s = surrogate_fast_sigmoid((v) - (v_th), 4.0)          # 这行的结果没人用
+s = surrogate_fast_sigmoid((v) - ((v_th * 0.5)), 4.0)  # 这行覆盖它
+v = (v * (1 - s))
+```
+
+第一条阈值判断**完全无效**，而文件合法、能编译、能训练、能导出。要发现它只能去读
+生成的代码。这是"写了却没跑"里最难查的一种。
+
+状态：**已关闭**。`build_neuron_spec` 记录已声明的 spike 变量，重复直接抛：
+
+```console
+$ snndsl deploy dup.snn
+dup.snn:14: error[sema]: neuron 'BAD' declares spike 's' twice
+        spike s = v > v_th * 0.5
+    hint: the second line silently overwrites the first; delete one, or
+          emit them under different names
+```
+
+只限制 `spike`，不限制普通赋值——`v` 在一个 body 里被写多次（更新、复位）是正常的。
+`tests/test_compiler.py::TestDuplicateSpike` 两条（报错文本 + 行号必须指向第二条）。
 
 ---
 
