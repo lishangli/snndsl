@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
 
-用一份 `.snn` 文本或几行 Python 描述脉冲神经网络，编译成四样东西：
+**用 Python 写网络，用 `.snn` 存档**，编译成四样东西：
 **可读的 PyTorch 源码**、**带数字的推理成本**、**能交给神经形态硬件的 NIR**、
 **能被 MLIR 工具链读的 `.mlir`**。
 外加一个别人不做的事——回答「这样导出去之后，还是同一个网络吗」，逐脉冲给证据。
@@ -176,9 +176,67 @@ BLOCK out   the classification head reads the membrane potential before reset,
 把每一环换成别人的实现（`nir` + `nirtorch` + `snnTorch` 的神经元）。
 后者是「不是我们自己说的」那一种证据。
 
-## 语言
+## 两种写法，一个 IR
 
-一个完整程序（`examples/mnist_mlp.snn`，注释略）：
+Python 是前端，`.snn` 是它的存档格式。两者不是编译链上的两级：`snn.Net` 和文本
+解析器最终都调用同一个 `build_neuron_spec` / `_emit`，落到同一个 `IRGraph`。
+`snndsl emit` 能把任一种输入打印出来（也可以打印成另一种），所以「必须先写
+`.snn`」并不成立。
+
+| | Python（`snn.Net`） | `.snn` 文本 |
+|---|---|---|
+| 循环 / 参数 / 复用 | 有，就是普通 Python（`for i in range(n)` 展开 n 块） | 没有：无函数、无循环、无类型 |
+| 训练 / 导出 / 部署检查 | 同一套后端 | 同一套后端 |
+| 工具读取时是否需要执行代码 | 需要（`deploy x.py` 会跑模块顶层语句） | 不需要，纯解析 |
+| 适合干什么 | 写新网络、扫参、生成变体 | 存档、审阅、diff、交给不许执行代码的工具 |
+
+所以：**用 Python 写，用 `.snn` 存**。
+
+```bash
+snndsl emit net.py -o net.snn     # Python 建的图 → 文本
+snndsl emit net.snn               # 规范化后打到 stdout
+```
+
+往返不是承诺，是测试：`tests/test_serialize.py` 对 `examples/` 下全部 10 个示例
+做 `compile → emit → compile`，比对 op 序列与形状（含带 `add` 的残差网络、
+ALIF、max-pool）。节点 **id** 会变（`h1` → `h1$1`，文本语法是就地改名），
+这是唯一允许的差异。
+
+下面这份 `.snn` 是 `snndsl emit examples/mnist_mlp.snn` 的原样输出（注释已丢，
+因为 IR 不存注释）：
+
+```
+program mnist_mlp
+
+temporal:
+    steps = 8
+    dt = 1
+    reset = subtract
+
+neuron LIF:
+    param tau = 2
+    param v_th = 1
+    state v = 0
+    v = ((v * (1 - (dt / tau))) + i)
+    spike s = v > v_th
+    v = (v - (s * v_th))
+    surrogate = fast_sigmoid(alpha=4)
+
+encoder rate:
+    gain = 1
+
+pipeline:
+    input   x : 1, 28, 28
+    encode  x -> rate with gain=1
+    dense   h1 : 256 <- x with scale=2
+    neuron  h1 -> LIF
+    dense   y : 10 <- h1 with scale=2
+    neuron  y -> LIF
+    output  out <- y with readout=spikes
+```
+
+和手写版（`examples/mnist_mlp.snn`）比，只差两处：注释和 `const` 没了（IR 里
+不存这两样），其余逐行对应。手写版原文：
 
 ```
 program mnist_mlp
@@ -275,6 +333,7 @@ checkpoint 也通用：`.snn` 训出来的权重直接加载进 Python 前端编
 | `snndsl build <file>` | 编译出 `.py`（可读 PyTorch 源码）+ `.ir.json` + `.nir` + `.mlir` |
 | `snndsl run <file>` | 编译 → 训练 → 量化 → 测稀疏度/能耗/预算 |
 | `snndsl infer <file> --weights w.pt` | 从 checkpoint 推理：top-k、逐层脉冲数、nJ、延迟 |
+| `snndsl emit <file> [-o x.snn]` | 把 IR 打印回 `.snn` 文本（`.py`、`.snn` 都可以是输入） |
 | `snndsl export <file> -o x.nir` | 只导出 NIR，可带 `--weights` |
 | `snndsl report <file> -o r.html` | 单文件 HTML 编译报告 |
 | `snndsl deploy <file> [--verify] [--report] [--targets]` | 部署检查 |
@@ -314,6 +373,7 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | `examples/cifar_cnn.snn` | conv / max-pool / flatten、per-layer scale、flatten 融合 |
 | `examples/adaptive_lif.snn` | 自定义神经元：双状态变量 + 自适应阈值 + atan 代理梯度 |
 | `examples/residual_snn.snn` | DAG 分支 + `add` 合并 + `direct_input` pass |
+| `examples/mnist_hw_py.py` | `mnist_hw.snn` 的 Python 版：`[DEPLOYABLE]`，checkpoint 与文本版互通 |
 | `examples/mnist_py.py` | Python 前端，与 `.snn` 版本 IR 等价 |
 | `examples/train_deploy.py` | **纯 Python 全流程**：编译 → 自己写 BPTT → 导出 → 验证 → 推理 |
 | `examples/e2e.sh` | 同样的流程，命令行版 |

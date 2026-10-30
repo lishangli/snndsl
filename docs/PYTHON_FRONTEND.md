@@ -91,7 +91,7 @@ LIF（ALIF/自适应阈值就认不出），这个限制是明确的、可报错
 以另一种形式出现——同一个 `LIFNode` 在训练脚本里被手工 reset、在推理脚本里被
 自动 reset。这比 `.snn` 的 header/body 矛盾更难发现，也更常见。
 
-## 4. 与 `.snn` 的关系：降级，不删除
+## 4. 与 `.snn` 的关系：降级成序列化格式，不删除
 
 `.snn` 现在的位置是"一个自造语法的前端"。按本文的结论，它不该再作为主入口：
 
@@ -99,6 +99,34 @@ LIF（ALIF/自适应阈值就认不出），这个限制是明确的、可报错
   比写成 Python 清楚），以及 `recognise_lif` 的输入源
 - **降级**：不再是"你该学的东西"，README 首屏不再以它开场
 - **不扩展**：不再加语法。语法每加一条，都是在一个错误的抽象上加码
+
+**这一步已经落地，不是计划**。`snndsl emit` 把 IR 打印回 `.snn`：
+
+```console
+$ snndsl emit examples/mnist_mlp.snn        # 规范化后打到 stdout
+$ snndsl emit examples/mnist_py.py -o x.snn # Python 建的图 → 文本
+```
+
+`tests/test_serialize.py` 对 `examples/` 下全部 10 个示例跑
+`compile → emit → compile`，比对 op 序列、形状、`T`、`reset`、`readout`
+（覆盖 `add` 残差、ALIF、max-pool）。所以 `.snn` 现在的定义是
+**"IR 的一种文本打印"**，与 `build` 生成的 `.py` 同级：一个给人读，一个给机器跑，
+都不是必须经过的前置阶段。
+
+### `.snn` 剩下什么独占能力
+
+实测一条，也是唯一一条：
+
+```console
+$ snndsl deploy examples/mnist_py.py
+>>> 模块顶层代码被执行了 <<<          # 用户的 import/副作用全都跑了
+[NOT DEPLOYABLE] readout=membrane ...
+```
+
+`deploy x.py` 必须 import 模块才能拿到 `Net` 对象，于是模块顶层的每一行都会执行；
+`deploy x.snn` 只解析文本。如果模型来自别人、你只想问"它能不能上芯片"而不想运行
+它，`.snn` 是两条前端里唯一能做到的。这个场景本仓库还没有用户，所以它是**保留
+理由，不是卖点**——真要做，还得配一个不 import 的静态提取路径（现在没有）。
 
 ## 5. 风险
 

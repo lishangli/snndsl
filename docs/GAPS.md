@@ -34,6 +34,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 20 | 时间维在交接口没有归宿 | **上游** nir + **我们的**兼容层 | 兼容层已关（`fold`）；导出侧也已写 T |
 | 21 | `beta → (tau, r)` 有一个自由参数 | **我们的** | 已关（本仓库转换器）；对外部转换器开着 |
 | 22 | 只能训练内置的四个数据集 | **我们的** | 已关闭 · 文件夹 / `.npz`，未知名字报错 |
+| 23 | Python 前端表达不了 zero reset | **我们的** | 已关闭 · `LIF(reset=...)`，且 `deploy` 会抓头体不一致 |
 
 ---
 
@@ -322,6 +323,39 @@ snnTorch 的 `Leaky(beta=0.9)` 积分 `v ← beta·v + i`；NIR 的 LIF 积分
 `test/`）与 `.npz`（`x_train`/`y_train`），图片按 `input` 声明的形状自动 resize，
 uint8 按 1/255 归一；**不认识的名字直接抛 `BackendError`**，并给出三种合法写法。
 实测 120 张 3 分类 png、12 epoch、1.0 秒到 95.83%（`docs/GETTING_STARTED.md` 第 3 步）。
+
+---
+
+### 23 · Python 前端写不出 zero reset —— 我们的 bug
+
+`.snn` 里两种复位都能写：
+
+```
+v = v - s * v_th      # subtract：NIR 只能近似成 v_reset=0，强驱动下会漂
+v = v * (1 - s)       # zero：NIR 有对应字段，逐位一致
+```
+
+而 Python 前端的 `LIF()` / `IF()` / `ALIF()` 把 body 写死成 subtract。想写 zero 只剩
+`custom()`——自己拼字符串，`deploy` 之前不会提醒你。于是出现这种组合：
+
+```python
+net = snn.Net("m", reset="zero")          # 头说 zero
+net.neuron(net.dense(x, 256), snn.LIF())  # 身体做 subtract
+```
+
+`deploy` 会正确地拦下来（`reset-mismatch`），但用户按提示改 header 改不动任何东西，
+因为**真正跑的是 body**——这正是第 1 条那个坑的 Python 版。
+
+状态：**已关闭**。三个工厂都加了 `reset="subtract" | "zero"`，它同时决定 body 的最后
+一行和 `NeuronSpec.reset`，两者不可能再分叉：
+
+```python
+snn.LIF(reset="zero").body[-1]     # 'v = v * (1 - s)'
+snn.LIF(reset="membrane")          # SNNError，不猜
+```
+
+`examples/mnist_hw_py.py` 用的就是它，`snndsl deploy` 给出 `[DEPLOYABLE]`，
+和 `.snn` 版结论一致。
 
 ---
 

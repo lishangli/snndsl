@@ -96,20 +96,34 @@ class Neuron:
         return f"<Neuron {self.name} params={self.params}>"
 
 
+def _reset_line(reset: str) -> str:
+    """The last line of the body -- and the only place reset actually happens.
+
+    ``reset="zero"`` (v <- v * (1 - s)) is the form NIR holds exactly; the
+    subtract form exports with v_reset=0 and drifts. A header that disagrees
+    with this line is a blocker in ``snndsl deploy``, by design.
+    """
+    if reset == "zero":
+        return "v = v * (1 - s)"
+    if reset == "subtract":
+        return "v = v - s * v_th"
+    raise SNNError(f"unknown reset {reset!r}", hint="use 'subtract' or 'zero'")
+
+
 def LIF(tau: float = 2.0, v_th: float = 1.0, surrogate: str = "fast_sigmoid",
-        alpha: float = 4.0, name: str = "LIF") -> Neuron:
+        alpha: float = 4.0, reset: str = "subtract", name: str = "LIF") -> Neuron:
     """Leaky integrate-and-fire: the standard baseline."""
     return Neuron(
         name=name, params={"tau": tau, "v_th": v_th}, state={"v": 0.0},
         body=["v = v * (1 - dt / tau) + i",
               "spike s = v > v_th",
-              "v = v - s * v_th"],
-        surrogate=f"{surrogate}(alpha={alpha})")
+              _reset_line(reset)],
+        surrogate=f"{surrogate}(alpha={alpha})", reset=reset)
 
 
 def ALIF(tau: float = 2.0, tau_a: float = 8.0, v_th: float = 1.0,
          beta: float = 0.25, surrogate: str = "atan", alpha: float = 2.0,
-         name: str = "ALIF") -> Neuron:
+         reset: str = "subtract", name: str = "ALIF") -> Neuron:
     """Adaptive-threshold LIF: threshold rises after each spike."""
     return Neuron(
         name=name,
@@ -118,18 +132,18 @@ def ALIF(tau: float = 2.0, tau_a: float = 8.0, v_th: float = 1.0,
         body=["v = v * (1 - dt / tau) + i",
               "a = a * (1 - dt / tau_a)",
               "spike s = v > v_th + beta * a",
-              "v = v - s * v_th",
+              _reset_line(reset),
               "a = a + s"],
-        surrogate=f"{surrogate}(alpha={alpha})")
+        surrogate=f"{surrogate}(alpha={alpha})", reset=reset)
 
 
 def IF(v_th: float = 1.0, surrogate: str = "fast_sigmoid", alpha: float = 4.0,
-       name: str = "IF") -> Neuron:
+       reset: str = "subtract", name: str = "IF") -> Neuron:
     """Non-leaky integrate-and-fire."""
     return Neuron(
         name=name, params={"v_th": v_th}, state={"v": 0.0},
-        body=["v = v + i", "spike s = v > v_th", "v = v - s * v_th"],
-        surrogate=f"{surrogate}(alpha={alpha})")
+        body=["v = v + i", "spike s = v > v_th", _reset_line(reset)],
+        surrogate=f"{surrogate}(alpha={alpha})", reset=reset)
 
 
 def custom(name: str, params: Dict[str, float], state: Dict[str, float],
@@ -344,6 +358,18 @@ class Net:
             ins = ", ".join(n.inputs) or "-"
             lines.append(f"  {n.id:<14} {n.op:<8} {list(n.shape)!s:<18} <- {ins}")
         return "\n".join(lines)
+
+    def to_snn(self, comment: str = "") -> str:
+        """Print this graph as ``.snn`` text.
+
+        ``.snn`` is a serialisation of the IR, not a language the IR is
+        compiled from, so this is lossless at the level that matters -- the op
+        sequence, shapes and blocks. Two things do not survive: per-node names
+        (the text syntax rebinds a layer's name in place) and any Python-side
+        loop structure, which is already unrolled by the time it reaches here.
+        """
+        from .serialize import to_snn
+        return to_snn(self.graph, comment=comment)
 
 
 def net(name: str = "snn", **kwargs) -> Net:

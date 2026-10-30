@@ -53,7 +53,27 @@ what works right now
 
 ## 第 1 步：写网络，然后在训练之前就问「它能上硬件吗」
 
-`examples/mnist_hw.snn` 全文（去掉空行 30 行）：
+两条等价的写法，选一条。`deploy` / `run` / `export` 对 `.py` 和 `.snn` 完全一样。
+
+**A. Python**（`examples/mnist_hw_py.py` 的 `build()`）：
+
+```python
+import snndsl as snn
+
+def build(hidden=256, steps=8):
+    LIF = snn.LIF(tau=2.0, v_th=1.0, reset="zero")   # zero reset 才能无损进 NIR
+    net = snn.Net("mnist_hw", steps=steps, reset="zero", readout="spikes")
+
+    x = net.encode(net.input(1, 28, 28), "rate", gain=1.0)
+    h = net.neuron(net.dense(x, hidden, scale=2.0, name="h1"), LIF, name="a1")
+    net.output(net.neuron(net.dense(h, 10, scale=1.0, name="y"), LIF, name="ay"))
+
+    net.train(data="mnist", epochs=10, batch=128, lr=1e-3)
+    net.budget(spikes_per_sample=40000)
+    return net
+```
+
+**B. 文本**（`examples/mnist_hw.snn` 全文，去掉空行 30 行）：
 
 ```
 program mnist_hw
@@ -96,6 +116,21 @@ infer:
 budget:
     spikes_per_sample = 40000
 ```
+
+两者不是编译链的两级，是同一张图的两种写法：`snndsl emit examples/mnist_hw_py.py`
+打印出来就是上面这段文本，反过来也一样。实测的等价性：
+
+```console
+$ snndsl deploy examples/mnist_hw_py.py --verify --weights build_e2e/mnist_hw.pt --data mnist
+  top-1 agreement    : 1.000
+  layer a1         spike rate 0.3412
+  layer ay         spike rate 0.1086
+  verdict            : PRESERVED
+```
+
+那个 `.pt` 是 `.snn` 版训练出来的——参数名和形状一致，checkpoint 可以互换。
+（`tests/test_serialize.py` 守着这一点，另有一条对 `examples/` 下全部 10 个示例
+做 `compile → emit → compile` 的往返测试。）
 
 现在**不要训练**，先花一秒检查它能不能导出：
 

@@ -252,6 +252,23 @@ def _cmd_export(args) -> int:
     return 0
 
 
+def _cmd_emit(args) -> int:
+    """Print the program back as .snn -- the IR's text form, not a new language."""
+    from .pipeline import compile_file
+    from .serialize import to_snn
+    r = compile_file(args.file, passes=args.passes or [])
+    text = to_snn(r.graph)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(text)
+        print(f".snn source : {args.out}")
+        print(f"  nodes     : {len(r.graph.nodes)}")
+        print(f"  lines     : {text.count(chr(10))}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def _verification_batch(args, result, in_shape, torch):
     """A verification batch that can actually make the network fire.
 
@@ -663,6 +680,15 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--weights", default=None, help="checkpoint .pt with weights")
     common(e)
     e.set_defaults(func=_cmd_export)
+
+    em = sub.add_parser("emit",
+                        help="print the program back as .snn text (normalise it)")
+    em.add_argument("file")
+    em.add_argument("--passes", nargs="*", default=None,
+                    help="extra passes, e.g. direct_input")
+    em.add_argument("-o", "--out", default=None, metavar="SNN",
+                    help="write to a file instead of stdout")
+    em.set_defaults(func=_cmd_emit)
 
     rp = sub.add_parser("report", help="build an HTML compile report")
     rp.add_argument("file")

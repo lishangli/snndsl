@@ -23,12 +23,26 @@ its numbers are checkable:
   交给硬件」的一条命令链，每一步都附本机真实输出。`bash examples/e2e.sh` 跑完全流程。
 - `tests/test_custom_data.py`：6 条，锁住"文件夹 / `.npz` 真的是那份数据""陌生名字必须
   抛错""权重真的被更新过"。
+- **`snndsl emit`：把 IR 打印回 `.snn`**（`snn.Net.to_snn()` 同一实现）。这条命令把
+  `.snn` 的定位钉死为「IR 的文本序列化」，而不是必须先写的前端语法——`.py` 和 `.snn`
+  都是输入，输出是同一张图。`tests/test_serialize.py` 对 `examples/` 下全部 10 个示例
+  做 `compile → emit → compile`，比对 op 序列、形状、`T`、`reset`、`readout`
+  （覆盖 `add` 残差、ALIF、max-pool）；另有一条断言两条前端产出的模块参数名与形状
+  完全相同，所以 checkpoint 可以互换——实测 `.snn` 训练出的 `.pt` 加载到 `.py` 版
+  仍是 `PRESERVED`、`top-1 一致率 1.000`、逐层发放率 0.3412 / 0.1086 一致。
+- `examples/mnist_hw_py.py`：`mnist_hw.snn` 的 Python 版，逐行对应，用于证明
+  「两种写法」不是口号。
 
 ### Fixed
 
 - **`snndsl export` 不写时间步**：导出的图本来就是单步的，但文件里没有一个字节说明
   要跑几次，连自己的 `snndsl fidelity` 都得让用户手工 `--steps`。现在写
   `snndsl.timesteps` / `snndsl.dt` / `snndsl.program` 到 `metadata`。
+- **Python 前端写不出 zero reset**：`LIF()` / `IF()` / `ALIF()` 把复位写死成
+  `v = v - s * v_th`。想写 NIR 能逐位复现的 `v = v * (1 - s)` 只能用 `custom()` 拼字符串，
+  而 `Net(reset="zero")` 只改头不改身体——`deploy` 会报 `reset-mismatch`，用户却无从改起。
+  三个工厂现在都接受 `reset="subtract" | "zero"`，它同时决定 body 最后一行与
+  `NeuronSpec.reset`，两者不再可能分叉（`docs/GAPS.md` 第 23 条）。
 - `schedule` pass 的提示印成 `T=4 <=<= 4`（条件表达式里多了一个 `<=`）。
 - `snndsl fold` 对"本来就没有重复"的图只说"no p divides the graph"，读起来像失败；
   现在说明节点数、试过的 p 范围，以及"单步图没有可折的东西"。
