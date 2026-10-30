@@ -31,7 +31,7 @@ import numpy as np
 
 from ..errors import SNNError
 
-__all__ = ["FidelityError", "Variant", "Report", "report", "report_file", "format_report"]
+__all__ = ["FidelityError", "Report", "Variant", "format_report", "report", "report_file"]
 
 _NEURONS = ("LIF", "LI", "IF", "CubaLIF", "CubaLI")
 _WEIGHTED = ("Affine", "Linear", "Conv1d", "Conv2d")

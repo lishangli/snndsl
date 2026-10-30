@@ -61,7 +61,10 @@ full = [
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
-    "ruff>=0.5",
+    # pinned to the version CI runs: a newer ruff reports rules an older local
+    # install cannot see (RUF059, RUF022 so far), so "green locally" kept meaning
+    # "red in CI" and the gap was only discovered after a push
+    "ruff==0.17.3",
     "build>=1.0",
     "mypy>=1.8",
 ]
