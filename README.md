@@ -315,7 +315,8 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | `examples/adaptive_lif.snn` | 自定义神经元：双状态变量 + 自适应阈值 + atan 代理梯度 |
 | `examples/residual_snn.snn` | DAG 分支 + `add` 合并 + `direct_input` pass |
 | `examples/mnist_py.py` | Python 前端，与 `.snn` 版本 IR 等价 |
-| `examples/e2e.sh` | 一条命令跑完「预检 → 训练 → 导出 → 验证 → 推理」 |
+| `examples/train_deploy.py` | **纯 Python 全流程**：编译 → 自己写 BPTT → 导出 → 验证 → 推理 |
+| `examples/e2e.sh` | 同样的流程，命令行版 |
 
 `examples/TRAINING_AND_INFERENCE.md` 是训练与推理的完整可复现记录，含真实终端输出；
 `examples/e2e.sh` 把「预检 → 训练 → 导出 → 验证 → 推理」串成一条命令。

@@ -419,14 +419,43 @@ net(torch.zeros(2, 1, 28, 28))                  # -> (2, 10)
 
 ---
 
-## 一条命令跑完
+## 两条捷径：命令行版 和 代码版
+
+命令行：
 
 ```bash
-bash examples/e2e.sh examples/mnist_hw.snn
+bash examples/e2e.sh examples/mnist_hw.snn     # 第 1～6 步，产物在 build_e2e/
 ```
 
-它会依次执行第 1～6 步、把产物写在 `build_e2e/`、最后列出每个文件是什么。
-想换成自己的网络：`bash examples/e2e.sh path/to/yours.snn`。
+代码（**推荐先读这个**，它把每一段的 Python 写出来了）：
+
+```bash
+python examples/train_deploy.py --epochs 2     # 产物在 build_code/
+```
+
+`examples/train_deploy.py` 一个文件跑完六个阶段，每段都是能抄走的一小段：
+
+| 阶段 | 干什么 | 用到的 API |
+|---|---|---|
+| 1 编译 | `.snn` → IR → 生成的 `.py` | `compile_source` / `load_module` / `result.report_dict()` |
+| 2 训练 | 自己写 BPTT，不调本仓库的训练循环 | `rt.build_dataloaders` / `rt.adapt_batch` + 标准 `loss.backward()` |
+| 3 导出 | IR + 权重 → `.nir`，再读回来验证 | `export_nir(graph, path, weights=...)` / `nir.read` |
+| 4 验证 | PyTorch 一遍、NIR 解释器一遍，逐位置比 | `deploy.verify(graph, net, x, nir_path=...)` |
+| 5 测量 | 发放率、事件驱动能耗、int8 体积 | `runner.energy_report` / `rt.quantize_weights_int8` |
+| 6 推理 | 脱离编译器，只要 `.py` + `.pt` | `DeployedModel.load` 或直接 `net(x)` |
+
+第 2 段值得单独说：**你不写训练代码，是因为产物就是一个普通 `nn.Module`**，
+`forward` 里已经把 T 步时间展开和代理梯度写死了，训练就是标准 BPTT——
+
+```python
+Net = load_module(result, "build_code/mnist_hw.py")
+net = Net()
+for x, y in loader:
+    logits = net(rt.adapt_batch(x, (1, 28, 28)))   # 内部跑 T=8 步
+    loss = F.cross_entropy(logits, y)
+    loss.backward()                                 # 阈值是硬的，梯度来自 surrogate
+    opt.step()
+```
 
 ---
 
