@@ -481,6 +481,61 @@ def _cmd_fold(args) -> int:
     return 0
 
 
+def _cmd_fidelity(args) -> int:
+    """Report how far a `.nir` moves under implementation choices that are all legal.
+
+    This is the one command whose answer is a number instead of a verdict: not
+    "can this deploy" but "if it deploys this way, how many spikes come back
+    different".  The baseline is the file, not PyTorch -- what ships is the file.
+    """
+    import json as _json
+
+    try:
+        from .backends import fidelity
+    except ImportError as exc:
+        print(f"error[backend]: this command integrates neurons, which needs PyTorch: {exc}")
+        print("  install: pip install 'snndsl[full]'")
+        return 2
+
+    sample = None
+    if args.input:
+        try:
+            import numpy as np
+
+            sample = np.load(args.input)
+        except Exception as exc:
+            print(f"error: cannot read {args.input}: {type(exc).__name__}: {exc}")
+            return 2
+
+    try:
+        rep = fidelity.report_file(args.file, steps=args.steps, samples=args.samples,
+                                   dt=args.dt, sample=sample)
+    except fidelity.FidelityError as exc:
+        print(f"error: {exc}")
+        return 2
+    except Exception as exc:                          # torch missing, bad file, odd node
+        print(f"error: cannot compare {args.file}: {type(exc).__name__}: {exc}")
+        return 2
+
+    if args.json:
+        print(_json.dumps({
+            "file": rep.path, "steps": rep.steps, "samples": rep.samples,
+            "nodes": rep.nodes, "dt": rep.dt,
+            "variants": [{"name": v.name, "note": v.note,
+                          "bit_flip_percent": round(v.bit_flip, 4),
+                          "median_percent": round(v.median, 4),
+                          "worst_percent": round(v.worst, 4),
+                          "top1_agreement": round(v.top1, 4),
+                          "layers": {k: round(x, 4) for k, x in v.layers.items()}}
+                         for v in rep.variants],
+            "first_to_break": rep.first_to_break,
+        }, indent=2, ensure_ascii=False))
+        return 0
+
+    print(fidelity.format_report(rep))
+    return 0
+
+
 def _cmd_doctor(args) -> int:
     """Report what this install can actually do, and what it cannot.
 
@@ -651,6 +706,21 @@ def build_parser() -> argparse.ArgumentParser:
                     help="where to write the folded graph (default: <file>.folded.nir)")
     fo.add_argument("--json", action="store_true", help="machine-readable output")
     fo.set_defaults(func=_cmd_fold)
+
+    fi = sub.add_parser(
+        "fidelity",
+        help="how far a .nir drifts under quantisation and a different tau discretisation")
+    fi.add_argument("file", help="a .nir file")
+    fi.add_argument("--steps", type=int, default=None,
+                    help="timesteps (default: metadata['snndsl.timesteps'], if the file was folded)")
+    fi.add_argument("--samples", type=int, default=40,
+                    help="how many inputs to average over (default: 40)")
+    fi.add_argument("--dt", type=float, default=1.0,
+                    help="timestep the tau comparison assumes (default: 1.0; a .nir does not record it)")
+    fi.add_argument("--input", default=None,
+                    help="a .npy sample to use instead of random inputs")
+    fi.add_argument("--json", action="store_true", help="machine-readable output")
+    fi.set_defaults(func=_cmd_fidelity)
 
     doc = sub.add_parser("doctor", help="report which parts of the toolchain work here")
     doc.set_defaults(func=_cmd_doctor)

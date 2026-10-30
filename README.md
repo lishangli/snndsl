@@ -275,6 +275,7 @@ checkpoint 也通用：`.snn` 训出来的权重直接加载进 Python 前端编
 | `snndsl report <file> -o r.html` | 单文件 HTML 编译报告 |
 | `snndsl deploy <file> [--verify] [--report] [--targets]` | 部署检查 |
 | `snndsl fold <file.nir> [-o out.nir]` | 把按时间展开的 `.nir` 收回成一个时间步，并把 T 记进 metadata |
+| `snndsl fidelity <file.nir>` | 同一份文件在量化 / 另一种 tau 离散化下，脉冲逐位置差多少 |
 | `snndsl doctor` | 这台机器上哪些能力可用 |
 
 作为库用：
