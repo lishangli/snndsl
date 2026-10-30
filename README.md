@@ -14,6 +14,28 @@
 > 到「导出、验证、交给硬件」的一条命令链，或者直接 `bash examples/e2e.sh` 跑完它。
 > 想先知道它值不值得用，继续往下读。
 
+## 长什么样
+
+```python
+import snndsl as snn
+
+LIF = snn.LIF(tau=2.0, reset="zero")
+net = snn.Net("mnist", steps=8)                 # 建图器，不是 nn.Module
+x   = net.encode(net.input(1, 28, 28), "rate")
+h   = net.neuron(net.dense(x, 256, scale=2.0, name="h1"), LIF)
+net.output(net.neuron(net.dense(h, 10, name="y"), LIF))
+
+result = net.compile()                          # 7 个节点 -> 119 行 PyTorch
+Net    = snn.load_module(result, "mnist.py")    # 到这里才有 forward 和权重
+```
+
+`net` 全程只持有 IR：**没有权重、没有 `forward`、`parameters()` 不存在**，
+`compile()` 之后自我封闭。真正能训练的是 `compile()` 生成的普通 `nn.Module`
+（203,530 个参数，`state_dict` 里是 `w_h1 / b_h1 / w_y / b_y`）。
+两种写法（上面这段 Python，和等价的 `.snn` 文本）建的是同一张图，共用同一个
+`finalize()`，所以不会在优化或代码生成阶段分叉。
+细节：[`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) §0。
+
 ## 它补的是哪一段
 
 `snnTorch`、`SpikingJelly`、`Norse` 已经能训练 SNN，`NIR` 已经能把 SNN 交给芯片。

@@ -14,6 +14,16 @@ its numbers are checkable:
 
 ### Added
 
+- `docs/PYTHON_FRONTEND.md` §0「`snn.Net` 是什么」：把一直靠口头解释的层次关系写成
+  可核对的一节。实测 `type(net)` 是 `snndsl.pyfront.Net`、`isinstance(net, nn.Module)`
+  为 `False`、`hasattr(net, "parameters")` 为 `False`、`vars(net)` 只有
+  `graph/_counts/_used_neurons/_closed`；编译后 `net.dense(...)` 抛
+  `SNNError: this Net is already compiled`。附「源 / IR / 模块」三层对照表，
+  以及 `named_children()` 为空、权重是裸 `nn.Parameter`（`w_h1/b_h1/w_y/b_y`）
+  这两个具体事实。
+- README 开头新增「长什么样」：12 行可运行示例，注释里点明 `snn.Net` 是建图器、
+  `compile()` 返回 `CompileResult` 而不是模型（实测 7 节点 → 119 行、203,530 参数）。
+
 - **`data =` 认你自己的数据**：图片文件夹（`<类别>/*.png`，可再分 `train/` `test/`）
   与 `.npz`（`x_train`/`y_train`）。图片按 `input` 声明的形状 resize，uint8 按 1/255 归一。
   之前只有 `mnist`/`fashion`/`cifar10`/`synthetic` 四个名字，**其他任何名字都静默落到
@@ -35,6 +45,15 @@ its numbers are checkable:
 
 ### Fixed
 
+- **`decode` 一用就崩在 codegen**：关键字在 `lexer.py`、lowering 在 `sema._op_decode`、
+  op 在 `ir.IO_OPS`、序列化在 `serialize._REBIND_OPS`，唯独 `torch_codegen.py` 没有
+  `_op_decode`。一份语法合法的 `.snn` 因此得到
+  `AttributeError: 'TorchCodeGen' object has no attribute '_op_decode'`——
+  报的是我们内部类名，还附一句"你是不是想写 `_op_encode`"，而且 `deploy`
+  本该在训练前拦住它。`examples/` 与 `tests/` 里 `decode` 出现 0 次，所以它从写下
+  那天起没被跑过。现在 `_emit_node` 查 handler 存在性，缺就抛 `SNNError` 并指路；
+  `tests/test_compiler.py::TestUnsupportedOp` 两条锁住（含"不许是 AttributeError"）。
+  **注意：只是把崩溃换成诚实的拒绝，`decode` 的语义仍未实现**（`docs/GAPS.md` 第 24 条）。
 - **`snndsl export` 不写时间步**：导出的图本来就是单步的，但文件里没有一个字节说明
   要跑几次，连自己的 `snndsl fidelity` 都得让用户手工 `--steps`。现在写
   `snndsl.timesteps` / `snndsl.dt` / `snndsl.program` 到 `metadata`。

@@ -11,6 +11,102 @@
 > 结构的循环节点，再从图里认出 SNN 语义**。这两件事没有任何现成工具做，
 > 因为所有现成工具都在"时间维已经消失"之后才接手。
 
+## 0. `snn.Net` 是什么：一张图纸，不是一个网络
+
+这一节是为了消掉一个反复出现的误解——把 `snn.Net` 当成"本仓库自己又造了一个
+`nn.Module`"。它不是。实测：
+
+```console
+>>> type(net)
+<class 'snndsl.pyfront.Net'>
+>>> isinstance(net, torch.nn.Module)
+False
+>>> hasattr(net, "parameters")
+False
+>>> vars(net).keys()
+dict_keys(['graph', '_counts', '_used_neurons', '_closed'])
+```
+
+它只持有 `graph`——也就是 IR。**它没有权重、没有 `forward`、没有参数**。
+`net.dense(...)` 不分配任何张量，只是在 `graph` 里追加一个节点并返回一个句柄：
+
+```python
+def _add(self, op, inputs, shape, attrs, ...):
+    # ... 检查 _closed、分配不重名的 id ...
+    node = IRNode(id=nid, op=op, inputs=[t.id for t in inputs], attrs=attrs, shape=shape)
+    self.graph.add(node)
+    return Tensor(self, node)          # Tensor 只是 (id, shape)，不是 torch.Tensor
+```
+
+`compile()` 之后它自我封闭，再加层直接报错，因为这个角色已经用完了：
+
+```console
+>>> net.compile()
+>>> net.dense(h, 5)
+SNNError: this Net is already compiled; start a new one
+```
+
+`Tensor` / `Neuron` 两个类同理：`snn.LIF(...)` 返回的 `Neuron` 里，方程是**字符串**，
+直到 `spec()` 才交给 `.snn` 的解析器校验（`pyfront.py:88`）。所以 Python 前端并没有
+绕过语义检查，它只是换了个方式写同一份被检查的文本。
+
+### 那"网络结构"在哪
+
+同一张网络有三种身，只有第二种叫"结构"：
+
+| 层 | 是什么 | 谁读 | 有权重吗 |
+|---|---|---|---|
+| 源 | `.snn` 文本，或 `net.dense(x, 256)` 这串调用 | 人 | 没有 |
+| **IR** | 一张 DAG（节点 + 边）+ 一张神经元方程表 | pass、codegen、NIR 导出 | 没有，只有形状 |
+| 模块 | `nn.Module`，`forward` 里 `for t in range(T)` 包着这张 DAG | PyTorch | **203,530 个** |
+
+`examples/mnist_hw_py.py` 那张图的真身，就是七行：
+
+```console
+program mnist_hw  T=8 readout=spikes
+  x              input    [1, 28, 28]        <- -
+  e              encode   [1, 28, 28]        <- x
+  h1             dense    [256]              <- e
+  a1             neuron   [256]              <- h1
+  y              dense    [10]               <- a1
+  ay             neuron   [10]               <- y
+  out            output   [10]               <- ay
+```
+
+节点 op 不靠 `nn.Sequential` 嵌套表达——Python 前端能生成的只有 11 种：
+`input / encode / dense / conv / pool / flatten / dropout / neuron / add /
+concat / output`。生成的 `SnnNet` 里 `named_children()` 是**空的**，权重是裸
+`nn.Parameter`：
+
+```console
+>>> m.state_dict().keys()
+odict_keys(['w_h1', 'b_h1', 'w_y', 'b_y'])
+```
+
+这不是省事，是把"结构"压到唯一一处可核对的地方。边就是 `forward` 里的变量
+引用，一眼能对上——下面这个三块残差网络（Python 循环生成，`.snn` 写不出）：
+
+```python
+for i in range(3):
+    t = n.neuron(n.dense(h, 256, name=f"r{i}"), LIF, name=f"ar{i}")
+    h = n.add(h, t, name=f"skip{i}")        # 残差
+```
+
+生成出来就是（原文，注释带着节点名）：
+
+```python
+            v_ar0 = s
+            # add skip0
+            v_skip0 = v_a0 + v_ar0
+            # dense r1 256->256
+            v_r1 = F.linear(v_skip0.reshape(batch, -1), self.w_r1, self.b_r1)
+```
+
+所以"网络结构"这个问题，在本仓库里有三个不同答案，取决于问的是哪一层：
+**写的是什么**（源）、**优化后剩什么**（IR，可 `net.describe()` 打印）、
+**跑的是什么**（模块，可 diff 的 PyTorch）。两种前端（`.snn` 文本与上面的 Python
+调用）由同一个 `finalize()` 收口（`pipeline.py:67`），不可能在优化或代码生成阶段分叉。
+
 ## 1. 时间循环是分水岭（实测）
 
 同一个两层 LIF 网络，两种写法，同一台机器（torch 2.10），`torch.export` 之后的

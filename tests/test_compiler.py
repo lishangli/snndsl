@@ -453,5 +453,58 @@ class TestDiagnostics(unittest.TestCase):
             self.fail("expected an error")
 
 
+class TestUnsupportedOp(unittest.TestCase):
+    """An op the grammar accepts but the backend never lowered must say so.
+
+    ``decode`` is in the lexer, in ``sema`` and in ``ir.IO_OPS``, so a program
+    using it parses and type-checks fine. ``torch_codegen`` has no
+    ``_op_decode``. Before this test that combination died inside codegen with
+    ``AttributeError: 'TorchCodeGen' object has no attribute '_op_decode'`` --
+    a stack trace pointing at our internals, from a file that looked legal.
+    """
+
+    DECODE = """
+program dec
+
+temporal:
+    steps = 4
+    dt = 1.0
+    reset = zero
+
+neuron LIF:
+    param tau = 2.0
+    param v_th = 1.0
+    state v = 0.0
+    v = v * (1 - dt / tau) + i
+    spike s = v > v_th
+    v = v * (1 - s)
+    surrogate = fast_sigmoid(alpha=4.0)
+
+pipeline:
+    input  x : 1, 4, 4
+    encode x -> rate with gain=1.0
+    dense  h : 8 <- x with scale=2.0
+    neuron h -> LIF
+    decode h -> rate with window=4
+    output h
+"""
+
+    def test_decode_reports_missing_lowering(self):
+        with self.assertRaises(SNNError) as ctx:
+            compile_source(self.DECODE)
+        msg = str(ctx.exception)
+        self.assertIn("decode", msg)
+        self.assertIn("no PyTorch lowering", msg)
+
+    def test_error_is_not_an_attribute_error(self):
+        """The whole point: a readable SNNError, never a bare AttributeError."""
+        try:
+            compile_source(self.DECODE)
+        except AttributeError:
+            self.fail("codegen leaked AttributeError instead of SNNError")
+        except SNNError:
+            pass
+
+
 if __name__ == "__main__":
     unittest.main()

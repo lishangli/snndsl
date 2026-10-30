@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Tuple
 
+from ..errors import SNNError
 from ..ir import IRGraph, IRNode
 
 HEADER = '''# -*- coding: utf-8 -*-
@@ -237,7 +238,15 @@ class TorchCodeGen:
                            f"  (readout={self.readout})")
             self.emit(ind, f"{acc} = {src} if {acc} is None else {acc} + {src}")
             return
-        getattr(self, f"_op_{op}")(n, ind, t_expr)
+        handler = getattr(self, f"_op_{op}", None)
+        if handler is None:
+            # The grammar may accept an op that this backend never grew a
+            # lowering for. Say so instead of dying on a bare AttributeError.
+            raise SNNError(
+                f"{op!r} has no PyTorch lowering",
+                hint="the .snn grammar accepts it, the backend does not "
+                     "implement it; see docs/GAPS.md #24")
+        handler(n, ind, t_expr)
 
     def _op_input(self, n: IRNode, ind: int, t_expr: str) -> None:
         self.emit(ind, f"# input {n.name} shape={list(n.shape)}")

@@ -35,6 +35,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 21 | `beta → (tau, r)` 有一个自由参数 | **我们的** | 已关（本仓库转换器）；对外部转换器开着 |
 | 22 | 只能训练内置的四个数据集 | **我们的** | 已关闭 · 文件夹 / `.npz`，未知名字报错 |
 | 23 | Python 前端表达不了 zero reset | **我们的** | 已关闭 · `LIF(reset=...)`，且 `deploy` 会抓头体不一致 |
+| 24 | 语法接受 `decode`，后端没有 lowering | **我们的** | 报错已可读；**功能仍未实现** |
 
 ---
 
@@ -356,6 +357,42 @@ snn.LIF(reset="membrane")          # SNNError，不猜
 
 `examples/mnist_hw_py.py` 用的就是它，`snndsl deploy` 给出 `[DEPLOYABLE]`，
 和 `.snn` 版结论一致。
+
+---
+
+### 24 · `decode` 能解析、能建图、然后崩在 codegen —— 我们的 bug
+
+`decode` 出现在四个地方：`lexer.py` 的关键字表、`sema.py` 的 `_op_decode`、
+`ir.py` 的 `IO_OPS`、`serialize.py` 的 `_REBIND_OPS`。唯独 `torch_codegen.py`
+里没有 `_op_decode`。于是这段程序解析通过、语义检查通过、pass 跑完，最后在
+生成源码时抛：
+
+```console
+AttributeError: 'TorchCodeGen' object has no attribute '_op_decode'.
+Did you mean: '_op_encode'?
+```
+
+注意报的是什么：**一个指向我们内部类名的 AttributeError**，外加一句"你是不是想写
+`_op_encode`"。用户手里拿着一份语法合法的 `.snn`，得到的是这个。而 `snndsl deploy`
+本该在训练之前就拦住它。
+
+顺带发现这里**没有任何测试覆盖 `decode`**：`examples/` 和 `tests/` 里零处出现，
+所以它从写下的那天起就没被跑过。
+
+状态：**报错已关闭，功能仍然开着**。`_emit_node` 现在查 handler 是否存在，
+不存在就抛 `SNNError`，给一句话和去处：
+
+```console
+$ snndsl deploy dec.snn
+dec.snn: error[general]: 'decode' has no PyTorch lowering
+    hint: the .snn grammar accepts it, the backend does not implement it
+```
+
+`tests/test_compiler.py::TestUnsupportedOp` 两条锁住它（含"不许是 AttributeError"）。
+但**这只是把崩溃换成一句诚实的拒绝**——`decode` 想要的语义（把窗口内的脉冲读回
+模拟量）仍然没实现。真要做，得让 codegen 带上跨时间步的窗口状态，并且 `nir_export`
+不能再把 `decode` 当恒等（`nir_export.py:210` 现在就在 skip 它）。那是一次功能开发，
+不是一次修补，所以先留着这个"明确拒绝"，而不是假装支持。
 
 ---
 
