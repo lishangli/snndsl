@@ -256,6 +256,47 @@ note: no .mlir file was written - 'conv' has no MLIR lowering in this backend: .
 
 ---
 
+### 20 · 时间维在交接口没有归宿 —— 上游 + 我们的兼容层
+
+`snnTorch` 的教程写法（`forward` 里 `for t in range(T)`）经 `nirtorch` 导出后，
+`.nir` 里是 **T 份彼此没有边的副本**：膜电位在 Python 变量里，NIR 没有边能表达
+它。副本逐位相同，于是只有最后一个算的是对的，另外 T-1 个算完丢弃——成本是
+**T²**，而文件里**没有一个字节说明 T 是多少**。
+
+复现：`python -m pytest tests/test_nir_fold.py -q`（6 条，全部对照 PyTorch 逐位置）。
+
+我们的处理：`snndsl fold` 检测重复、收回成一份、把 T 写进
+`metadata["snndsl.timesteps"]`，并丢掉 T-1 个悬空副本被 `nir.write` 制造出的
+多余 `Output`。实测 21 → 6 节点，T 步执行与 PyTorch **differ = 0**。
+
+状态：**兼容层已关，根因开着**。根因是 NIR 没有时间维，属于格式设计选择，
+只能靠上游加一个"这是循环体"的声明；在那之前，`metadata` 是唯一能放 T 的地方。
+
+同一段里暴露的两个上游缺陷（都已在我们这一侧兼容，未修上游）：
+
+- `nirtorch` 2.6 的 `Output.input_type = {'input': None}` 让 `nir.write` 在 h5py 里
+  抛 `TypeError: One of data, shape or dtype must be specified`——生产者存不下自己的输出。
+- `nirtorch` 把神经元参数写成 size-1 数组，而 `nir.LIF.__post_init__` 用参数形状推
+  `input_type`，于是一个接在 8 宽 `Affine` 后的 LIF 声明 `input_type=[1]`，
+  `nir.read` 抛 `type mismatch: fc1.output: [[8]] -> lif1.input: [[1]]`。
+
+两个都是"算术没错、类型声明错"，而类型声明正是 verifier 和所有消费者读的东西。
+
+---
+
+### 21 · `beta → (tau, r)` 有一个自由参数，选错则网络慢 9.5 倍 —— 我们的
+
+snnTorch 的 `Leaky(beta=0.9)` 积分 `v ← beta·v + i`；NIR 的 LIF 积分
+`v ← (1 − dt/tau)·v + (dt/tau)·r·i`。`beta` 只定下 `tau = −1/ln(beta)`，**`r` 是自由的**：
+写 `r = 1` 得到的是慢 9.5 倍的同一个网络，文件合法、类型正确、数值全错。
+
+这一条是写 `tests/test_nir_fold.py` 时先写错、被 `differ` 抓到才发现的
+（第一版 `r = 1.0`，折叠后 `differ = 1.0`；改成 `r = tau` 后 `differ = 0`）。
+
+状态：**在我们自己的转换里已关**；对所有外部转换器开着——没有任何工具检查这件事。
+
+---
+
 ## 怎么用这张表
 
 - 想判断能不能用：先看第 9–11、17、19 条属于你的网络吗，属于就别绕，绕不过去。

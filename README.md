@@ -274,6 +274,7 @@ checkpoint 也通用：`.snn` 训出来的权重直接加载进 Python 前端编
 | `snndsl export <file> -o x.nir` | 只导出 NIR，可带 `--weights` |
 | `snndsl report <file> -o r.html` | 单文件 HTML 编译报告 |
 | `snndsl deploy <file> [--verify] [--report] [--targets]` | 部署检查 |
+| `snndsl fold <file.nir> [-o out.nir]` | 把按时间展开的 `.nir` 收回成一个时间步，并把 T 记进 metadata |
 | `snndsl doctor` | 这台机器上哪些能力可用 |
 
 作为库用：
@@ -362,6 +363,8 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | [`docs/GAPS.md`](docs/GAPS.md) | 缺口登记表：归属、状态、验证命令 |
 | [`docs/UPSTREAM_ISSUES.md`](docs/UPSTREAM_ISSUES.md) | 四条可提交的上游 issue |
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | 生态位，含真实 GitHub 数据 |
+| [`docs/ECOSYSTEM_GAPS.md`](docs/ECOSYSTEM_GAPS.md) | 训练/交换/编译/硬件五段缺陷清单，含外部模型的实测数字 |
+| [`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) | 从 PyTorch 往下：哪一段能复用，分水岭是时间循环 |
 | [`docs/deploy_report_mnist.html`](docs/deploy_report_mnist.html) | 一份可以直接发给别人的部署报告 |
 
 ## 依赖与致谢

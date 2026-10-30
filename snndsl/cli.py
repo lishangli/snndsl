@@ -427,6 +427,60 @@ def _cmd_deploy(args) -> int:
     return 0
 
 
+def _cmd_fold(args) -> int:
+    """Fold an unrolled `.nir` back to one timestep and record T.
+
+    The point is not bytes.  A `for t in range(T)` model traced by nirtorch is a
+    graph with T detached copies, and a consumer has to execute all T of them to
+    get one answer -- T^2 block evaluations for a network that costs T.  Folding
+    recovers the loop, and writes T where a `.nir` can actually hold it.
+    """
+    import json as _json
+
+    from .backends import nir_fold
+
+    try:
+        per = nir_fold.detect(__import__("nir").read(args.file))
+    except Exception as exc:                           # unreadable file, bad hdf5
+        print(f"error: cannot read {args.file}: {type(exc).__name__}: {exc}")
+        return 2
+
+    if not per.foldable:
+        if args.json:
+            print(_json.dumps(per.to_dict(), indent=2))
+        else:
+            print(f"no fold: {per.summary()}")
+            print(f"  nodes: {per.nodes}")
+        return 1
+
+    try:
+        out, per = nir_fold.fold_file(args.file, args.out)
+    except nir_fold.FoldError as exc:
+        print(f"error: {exc}")
+        return 2
+    except Exception as exc:                            # nir.write / hdf5
+        print(f"error: folded in memory but writing failed: "
+              f"{type(exc).__name__}: {exc}")
+        return 2
+
+    if args.json:
+        print(_json.dumps({"in": args.file, "out": out, **per.to_dict()},
+                          indent=2))
+        return 0
+
+    print(f"in   {args.file}")
+    print(f"out  {out}")
+    print(f"  {per.summary()}")
+    print(f"  node evaluations per inference: "
+          f"{per.repeats * per.repeats * per.period} -> {per.repeats * per.period}"
+          f"  ({per.repeats}x less work)")
+    print(f"  timesteps recorded in metadata: snndsl.timesteps = {per.repeats}")
+    if per.dropped_outputs:
+        print(f"  dropped {per.dropped_outputs} dangling copies that nir.write "
+              f"had turned into extra Outputs")
+    return 0
+
+
 def _cmd_doctor(args) -> int:
     """Report what this install can actually do, and what it cannot.
 
@@ -588,6 +642,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "pin a different nir, so they must not share ours")
     common(d)
     d.set_defaults(func=_cmd_deploy)
+
+    fo = sub.add_parser(
+        "fold",
+        help="recover the time loop from a .nir whose steps were unrolled")
+    fo.add_argument("file", help="a .nir file")
+    fo.add_argument("-o", "--out", default=None,
+                    help="where to write the folded graph (default: <file>.folded.nir)")
+    fo.add_argument("--json", action="store_true", help="machine-readable output")
+    fo.set_defaults(func=_cmd_fold)
 
     doc = sub.add_parser("doctor", help="report which parts of the toolchain work here")
     doc.set_defaults(func=_cmd_doctor)

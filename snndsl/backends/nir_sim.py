@@ -115,6 +115,14 @@ def _to_state(p: torch.Tensor, like: torch.Tensor) -> torch.Tensor:
     The batched case is the older one: parameters stay ``(N,)`` and the leading
     dimensions are a batch that shares one parameter set, so it broadcasts.
     """
+    if p.numel() == 1:
+        # A single scalar is the *normal* encoding for a layer whose neurons all
+        # share one parameter set, and it is what nirtorch emits: it writes
+        # ``nir.LIF(tau=np.array([tau]))`` from the module's beta, so every
+        # neuron node in a converted snnTorch model arrives with size-1 params
+        # and a size-N activation. Refusing that case rejected the single most
+        # common export in the ecosystem, so broadcast instead.
+        return p.expand_as(like)
     if p.numel() == like.numel():
         return p.reshape(like.shape)
     if like.dim() > 1 and p.numel() == int(np.prod(like.shape[1:])):
