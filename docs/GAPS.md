@@ -36,6 +36,7 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 22 | 只能训练内置的四个数据集 | **我们的** | 已关闭 · 文件夹 / `.npz`，未知名字报错 |
 | 23 | Python 前端表达不了 zero reset | **我们的** | 已关闭 · `LIF(reset=...)`，且 `deploy` 会抓头体不一致 |
 | 24 | 语法接受 `decode`，后端没有 lowering | **我们的** | 报错已可读；**功能仍未实现** |
+| 25 | `nn.Module` 被当成 `snndsl.Net` 收下 | **我们的** | 已关闭 · 按类型判断，报 `exposes SNN, not snndsl.Net` |
 
 ---
 
@@ -393,6 +394,56 @@ dec.snn: error[general]: 'decode' has no PyTorch lowering
 模拟量）仍然没实现。真要做，得让 codegen 带上跨时间步的窗口状态，并且 `nir_export`
 不能再把 `decode` 当恒等（`nir_export.py:210` 现在就在 skip 它）。那是一次功能开发，
 不是一次修补，所以先留着这个"明确拒绝"，而不是假装支持。
+
+---
+
+### 25 · 一个普通 `nn.Module` 被当成自家网络收下 —— 我们的 bug
+
+`compile_python_file` 判断"这个 `.py` 交出来的是不是网络"，用的是：
+
+```python
+if net is None or not hasattr(net, "compile"):
+```
+
+而 `torch.nn.Module` **自 2.0 起也有 `compile`**（`torch.compile` 的入口）。所以一个
+从 ANN 过来的用户，写完 `class SNN(nn.Module)`、实例命名成 `net`，交给工具，会通过
+检查，然后：
+
+```console
+$ snndsl deploy std_snn.py
+TypeError: compile() got an unexpected keyword argument 'passes'
+  torch/nn/modules/module.py:3046 in compile
+    self._compiled_call_impl = torch.compile(self._call_impl, *args, **kwargs)
+```
+
+**更糟的是不带 kwargs 的路径**（`compile_python_file(path)`）：
+
+```console
+>>> from snndsl.pipeline import compile_python_file
+>>> r = compile_python_file("std_snn.py")
+>>> repr(r)
+'None'
+```
+
+`Module.compile()` 是原地生效、返回 `None` 的，于是"成功编译"了一个网络，产物是
+`None`。没有异常，没有警告，直到下游某处取 `r.graph` 才炸——或者某个 `if r:` 直接
+静默跳过。这正是本项目最不该犯的那类错：**没报错，所以看起来对了**。
+
+状态：**已关闭**。改成按类型判断，并说清它看到了什么：
+
+```console
+$ snndsl deploy std_snn.py
+std_snn.py: error[general]: std_snn.py exposes SNN, not snndsl.Net
+    hint: this tool does not read nn.Module directly -- build the graph with
+          snndsl.Net, or return one from build(); see docs/PYTHON_FRONTEND.md §0
+```
+
+`tests/test_compiler.py::TestNotAnSnndslNet` 三条：类名出现在报错里、不许静默返回
+`None`、不许漏出 torch 的 `TypeError`。
+
+这个 bug 的根源比"漏一个判断"更深：**本工具确实读不了 `nn.Module`**。
+`forward` 是运行时执行的，静态图拿不到；接这条路要先 `torch.export` + `hop.scan`
+（`docs/PYTHON_FRONTEND.md` §1、§3.2）。所以这里只是把误读挡掉，真正的能力缺口在那边。
 
 ---
 
