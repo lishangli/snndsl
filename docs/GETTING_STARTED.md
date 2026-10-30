@@ -15,6 +15,13 @@
 下面所有例子都用 `examples/mnist_hw.snn`——它是本仓库里**能无损部署**的那个网络
 （`readout=spikes` + zero reset）。先跑通它，再换成你自己的。
 
+> **想用 Python 写网络**：`examples/mnist_forward.py` 是同一张网络的 `forward` 版
+> （`class MnistNet(snn.Module)`，7 个节点、203,530 参数、1 epoch 同样 91.98%）。
+> 三个前端——`.snn` 文本、`snn.Net` 建图器、`snn.Module` 的 `forward`——产出同一份
+> IR，所以后面第 2 步到第 6 步的命令**一个字都不用改**，把文件名换掉即可。
+> 想弄清楚为什么 `forward` 里不用写 `for t in range(T)`，见
+> [`PYTHON_FRONTEND.md`](PYTHON_FRONTEND.md) §0。
+
 ---
 
 ## 第 0 步：装，然后问这台机器能干什么
@@ -29,7 +36,7 @@ snndsl doctor
 component      status                       required
 ------------------------------------------------------
 python         3.11.1                       yes
-snndsl         0.3.0                        yes
+snndsl         0.4.0                        yes
 numpy          2.3.5                        yes
 torch          2.10.0+cu128                 no
 torchvision    0.25.0+cu128                 no

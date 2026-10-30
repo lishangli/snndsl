@@ -14,6 +14,29 @@ its numbers are checkable:
 
 ### Added
 
+- **`forward` 前端（`snndsl.Module`）**：网络可以按写 ANN 的方式描述——
+  `class Net(snn.Module)` + `input_shape` / `steps` + `def forward(self, x)`。
+  `forward` 描述**一个时间步**，T 由编译器套上去，所以图不随 T 膨胀。
+  实测同一张网络：`torch.jit.trace` 在 T=32 时 137 个节点，本前端恒 5 个
+  （`docs/PYTHON_FRONTEND.md` §0 有 T=1..32 的完整对照表）。
+  与 `snn.Net` 建图器产出同一份 IR：`examples/mnist_forward.py` 与
+  `examples/mnist_hw.snn` 都是 **203,530 参数**，1 epoch 都是 **test_acc 0.9198**。
+- `.snn` 写不出、`forward` 写得出的一条：块循环。
+  `for _ in range(self.depth)` 真的生成 `depth` 个 block（`fc / fc_2 / fc_3`）。
+- 三条显式报错，对应「能编译、能训练、但图全错」的失败模式：
+  `steps=8` 里写 `for t in range(8)`（会被当成展开 8 个 block）、
+  同一层实例绑两个属性名（`self.a = self.b = lif`，节点无法区分）、
+  `forward` 返回非句柄（`return None`）。
+- `snndsl deploy/emit xxx.py` 现在认三种暴露方式：`build()`、模块级 `net`/`model`、
+  文件里唯一的 `snndsl.Module` 子类；有两个子类时报错要求指明，不猜。
+- `snndsl.__version__` 0.3.0 → 0.4.0；`tests/test_forward_front.py` 17 条，
+  全量 133 → **150 passed**。
+
+### Fixed
+
+- `Net.encode()` 没有往 `graph.encoders` 写盘，导致 `to_snn()` 丢掉 `encoder` 块
+  （图能编译，但 `.snn` 往返少一段）。现在补上，往返后的 op 序列逐项相同。
+
 - `docs/PYTHON_FRONTEND.md` §0「`snn.Net` 是什么」：把一直靠口头解释的层次关系写成
   可核对的一节。实测 `type(net)` 是 `snndsl.pyfront.Net`、`isinstance(net, nn.Module)`
   为 `False`、`hasattr(net, "parameters")` 为 `False`、`vars(net)` 只有

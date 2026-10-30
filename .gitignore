@@ -1,4 +1,6 @@
-# 构建产物（`snndsl build` 生成）
+# 编译产物（`snndsl build` / `load_module` 生成的 PyTorch 源码）
+_generated_*.py
+_gen_*.py
 build/
 build_*/
 dist/

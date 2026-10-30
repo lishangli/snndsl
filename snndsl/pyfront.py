@@ -55,6 +55,16 @@ class Tensor:
     def __repr__(self) -> str:
         return f"<Tensor {self.name} {list(self.shape)}>"
 
+    def __add__(self, other: "Tensor") -> "Tensor":
+        """``a + b`` is the residual ``add`` op; anything else is a mistake."""
+        if not isinstance(other, Tensor):
+            raise SNNError(
+                f"cannot add {type(other).__name__} to a tensor handle",
+                hint="only tensor handles exist while forward() is traced; "
+                     "no constants or torch ops")
+        from .forward_front import _tracer  # local: avoids an import cycle
+        return _tracer().net.add(self, other)
+
 
 class Neuron:
     """A neuron model: equations in the DSL's own syntax, validated on use."""
@@ -69,6 +79,15 @@ class Neuron:
         self.surrogate = surrogate
         self.reset = reset
         self._spec: Optional[NeuronSpec] = None
+        # set by forward_front.Module.__setattr__ to the attribute name, so
+        # `self.lif1(x)` names the IR node `lif1` instead of `n3`
+        self.scope: Optional[str] = None
+
+    def __call__(self, x: "Tensor") -> "Tensor":
+        """Apply this model to ``x`` inside a ``forward()`` being traced."""
+        from .forward_front import _tracer  # local: avoids an import cycle
+        t = _tracer()
+        return t.op("neuron", self.scope, t.net.neuron, x, self)
 
     # ------------------------------------------------------------- lowering
     def to_source(self) -> str:
@@ -224,6 +243,9 @@ class Net:
 
     def encode(self, x: Tensor, scheme: str = "rate", gain: float = 1.0) -> Tensor:
         """Turn analog input into spikes/current. ``rate`` = constant current."""
+        # recorded so `to_snn()` reproduces the `encoder` block the text parser
+        # would have built; the codegen itself reads the node attrs
+        self.graph.encoders.setdefault(scheme, {"params": {"gain": float(gain)}})
         return self._add("encode", [x], x.shape,
                          {"scheme": scheme, "window": self.graph.temporal.steps,
                           "gain": float(gain)})

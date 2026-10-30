@@ -148,10 +148,14 @@ def compile_file(path: str, **kwargs) -> CompileResult:
 def compile_python_file(path: str, **kwargs) -> CompileResult:
     """Import a Python module and compile the network it exposes.
 
-    The module must offer one of:
+    Three ways to expose it, tried in this order:
 
-    - ``build()`` — a zero-argument callable returning ``snndsl.Net``;
-    - a module-level ``net`` object.
+    - ``build()`` -- a zero-argument callable returning ``snndsl.Net`` (or a
+      ``snndsl.Module``);
+    - a module-level ``net`` / ``model`` object;
+    - the only ``snndsl.Module`` subclass defined in the file, instantiated
+      with no arguments. That last one is what makes a plain
+      ``class Net(snn.Module)`` file deployable without boilerplate.
 
     Anything else is a modelling error, not a crash, so it says what it wanted.
     """
@@ -173,27 +177,43 @@ def compile_python_file(path: str, **kwargs) -> CompileResult:
         if added:
             sys.path.remove(here)
 
-    net = getattr(mod, "net", None)
+    from .forward_front import Module as _Module
+    from .pyfront import Net as _Net
+
+    net = getattr(mod, "net", None) or getattr(mod, "model", None)
     builder = getattr(mod, "build", None)
     if callable(builder):
         net = builder()
     if net is None:
+        candidates = [
+            obj for obj in vars(mod).values()
+            if isinstance(obj, type) and issubclass(obj, _Module)
+            and obj is not _Module and obj.__module__ == mod_name
+        ]
+        if len(candidates) == 1:
+            net = candidates[0]()
+        elif len(candidates) > 1:
+            raise SNNError(
+                f"{os.path.basename(path)} defines {len(candidates)} "
+                f"snndsl.Module subclasses: "
+                f"{', '.join(c.__name__ for c in candidates)}",
+                hint="expose the one to compile as a module-level `net =`")
+    if net is None:
         raise SNNError(
             f"{os.path.basename(path)} exposes no network",
-            hint="expose either a module-level `net` or a zero-argument "
-                 "`build()` that returns snndsl.Net")
+            hint="expose a subclass of snndsl.Module, a module-level `net`, or "
+                 "a zero-argument `build()`")
     # Duck-typing on ``compile`` is not safe here: torch.nn.Module has had a
     # ``compile`` method since 2.0 (the torch.compile entry point), so an
     # ordinary PyTorch SNN would be accepted and then silently returned as
     # None. Match the type instead.
-    from .pyfront import Net as _Net
-    if not isinstance(net, _Net):
+    if not isinstance(net, (_Net, _Module)):
         raise SNNError(
             f"{os.path.basename(path)} exposes {type(net).__name__}, "
-            f"not snndsl.Net",
-            hint="this tool does not read nn.Module directly -- build the graph "
-                 "with snndsl.Net, or return one from build(); see "
-                 "docs/PYTHON_FRONTEND.md §0")
+            f"not snndsl.Net or snndsl.Module",
+            hint="this tool does not read nn.Module directly -- subclass "
+                 "snndsl.Module and write forward(), or build the graph with "
+                 "snndsl.Net; see docs/PYTHON_FRONTEND.md")
     return net.compile(**kwargs)
 
 

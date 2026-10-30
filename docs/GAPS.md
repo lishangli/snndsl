@@ -38,6 +38,8 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 24 | 语法接受 `decode`，后端没有 lowering | **我们的** | 报错已可读；**功能仍未实现** |
 | 25 | `nn.Module` 被当成 `snndsl.Net` 收下 | **我们的** | 已关闭 · 按类型判断，报 `exposes SNN, not snndsl.Net` |
 | 26 | 同一变量声明两次 `spike`，第一条静默失效 | **我们的** | 已关闭 · `SemaError`，带行号 |
+| 27 | `forward` 里复用同一个层不共享权重 | **我们的** | 开着 · 每次调用新建节点，权重各一份 |
+| 28 | `forward` 里写不了数据相关的 `if` | **我们的** | 开着 · 图必须静态，写了会报错 |
 
 ---
 
@@ -442,9 +444,14 @@ std_snn.py: error[general]: std_snn.py exposes SNN, not snndsl.Net
 `tests/test_compiler.py::TestNotAnSnndslNet` 三条：类名出现在报错里、不许静默返回
 `None`、不许漏出 torch 的 `TypeError`。
 
-这个 bug 的根源比"漏一个判断"更深：**本工具确实读不了 `nn.Module`**。
-`forward` 是运行时执行的，静态图拿不到；接这条路要先 `torch.export` + `hop.scan`
-（`docs/PYTHON_FRONTEND.md` §1、§3.2）。所以这里只是把误读挡掉，真正的能力缺口在那边。
+这个 bug 的根源比"漏一个判断"更深：**本工具确实读不了普通的 `nn.Module`**。
+它的算子作用在 `torch.Tensor` 上，图只存在于 trace/export 的产物里；要接这条路得先
+`torch.export` + `hop.scan`（`docs/PYTHON_FRONTEND.md` §1、§3.2）。
+
+注意这条**不**意味着「用 Python 写网络不支持」：`snn.Module` 的 `forward`
+是直接支持的（`docs/PYTHON_FRONTEND.md` §0），区别只在于它的层调用返回 IR 句柄
+而不是 `torch.Tensor`，所以单步符号执行就能读出静态图。这个 bug 影响的是
+"凭空接管一个别人写的 `nn.Module`"，那是另一件事。
 
 ---
 
@@ -474,6 +481,63 @@ dup.snn:14: error[sema]: neuron 'BAD' declares spike 's' twice
 
 只限制 `spike`，不限制普通赋值——`v` 在一个 body 里被写多次（更新、复位）是正常的。
 `tests/test_compiler.py::TestDuplicateSpike` 两条（报错文本 + 行号必须指向第二条）。
+
+---
+
+### 27 · `forward` 里复用同一个层，权重不共享 —— 我们的（开着）
+
+PyTorch 里 `self.fc` 用在三处就是**共享权重**。本工具里每次调用都追加一个新节点，
+codegen 按节点生成参数，于是三份独立的 weight：
+
+```python
+def forward(self, x):
+    for _ in range(self.depth):
+        x = self.lif(self.fc(x))       # fc / fc_2 / fc_3，三段参数
+    return self.head(x)
+```
+
+```console
+$ python examples/mnist_forward.py --dry-run     # DeepNet
+fc      dense  [32]  <- e
+fc_2    dense  [32]  <- lif
+fc_3    dense  [32]  <- lif_2
+```
+
+参数量是 `depth ×` 而不是 `1 ×`。语义上是"三个不同层"，不是"一层用三次"。
+
+状态：**开着**。没有静默出错（图是对的，只是层不同），但和 PyTorch 直觉相反，
+所以记在这里。修法要给 `IRNode` 加一个 `weight_group` 字段，codegen 里让多个节点
+指向同一个 `nn.Parameter`；`state_dict` 的 key 合并会连带影响 checkpoint 兼容性，
+不是一行改动。退路：自己改生成的源码（把 `self.w_fc_2 = self.w_fc` 接上），
+或者别复用层、直接接受 `depth ×` 参数。`snn.Net` 建图器同样没有共享权重的表达，
+两边都要等 `weight_group`。
+
+### 28 · `forward` 里写不了数据相关的分支 —— 我们的（开着）
+
+```python
+def forward(self, x):
+    if x.shape[0] > 1:                 # 编译期常量判断：可以，Python 直接折叠
+        ...
+    if self.training:                  # 可以，self 是普通对象
+        ...
+```
+
+上面两种都能写。下面这种不行：
+
+```python
+def forward(self, x):
+    h = self.fc(x)
+    if h.sum() > 0:                    # h 是句柄，没有数值
+        h = self.fc2(h)
+    return h
+```
+
+`h` 是 `Tensor` 句柄，`h.sum()` 不存在，会直接 `AttributeError`。这类依赖**数据**
+的分支本来就没有静态图表示，任何图编译器都一样（`torch.export` 也要求分支可静态化）。
+
+状态：**开着**，不打算修。报错来自 Python 本身，信息是 `'Tensor' object has no
+attribute 'sum'`，能看懂但没指出"是因为图必须静态"。如果实际用起来这条困扰人，
+再加一个 `Tensor.__getattr__` 给出定向提示。
 
 ---
 

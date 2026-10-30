@@ -11,59 +11,142 @@
 > 结构的循环节点，再从图里认出 SNN 语义**。这两件事没有任何现成工具做，
 > 因为所有现成工具都在"时间维已经消失"之后才接手。
 
-## 0. 网络怎么描述：三种写法，工具只认前两种
+## 0. 网络怎么描述：三种写法，工具全认
 
-从 ANN 过来的人，心里的"用 Python 描述网络"大概是这个：
+| 你写的东西 | 谁写 | 工具怎么处理 | 产物 |
+|---|---|---|---|
+| `class Net(snn.Module)` + `forward` | 人 | 单步符号执行 → IR | 同一份 |
+| `snn.Net` 调用序列 | 生成代码、要精确控制 | 每个方法直接加节点 | 同一份 |
+| `.snn` 文本 | 机器 | 解析 → IR | 同一份 |
+
+三种都收口在 `finalize()`，优化 pass 和 codegen 不知道你用了哪种。
+
+### `forward` 怎么写
+
+`forward` 描述**一个时间步**。T 是类属性，由编译器套上去——这和 `.snn` 里
+`temporal: steps = 8` 是同一件事，所以不需要在 `forward` 里写时间循环。
 
 ```python
-class SNN(nn.Module):
+import snndsl as snn
+
+class MnistNet(snn.Module):
+    input_shape = (1, 28, 28)
+    steps = 8
+    reset = "zero"
+
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(784, 256)
-        self.a1  = LIF()
+        self.fc1  = snn.Dense(256, scale=2.0)
+        self.fc2  = snn.Dense(10)
+        self.lif1 = snn.LIF(tau=2.0, reset="zero")
+        self.lif2 = snn.LIF(tau=2.0, reset="zero")
+
     def forward(self, x):
-        for t in range(T):        # 时间循环
-            ...
+        x = self.lif1(self.fc1(x))
+        return self.lif2(self.fc2(x))
 ```
 
-**这种写法本工具读不了，会明确拒绝**（实测）：
+节点名就是属性名，打印出来能和你写的代码逐行对上（实测）：
 
 ```console
-$ snndsl deploy std_snn.py
-std_snn.py: error[general]: std_snn.py exposes SNN, not snndsl.Net
-    hint: this tool does not read nn.Module directly -- build the graph with
-          snndsl.Net, or return one from build(); see docs/PYTHON_FRONTEND.md §0
+$ python examples/mnist_forward.py --dry-run
+id                    op        shape             inputs
+--------------------------------------------------------------
+x                     input     [1, 28, 28]
+e                     encode    [1, 28, 28]       x
+fc1                   dense     [256]             e
+lif1                  neuron    [256]             fc1
+fc2                   dense     [10]              lif1
+lif2                  neuron    [10]              fc2
+out                   output    [10]              lif2
+
+program   : MnistNet
+time      : T=8  dt=1.0  schedule=looped
+graph     : 7 nodes, 203,530 params, 1,626,112 MAC (T x step)
 ```
 
-不是不想做，是这条路还没接（§3.2 是待办）。`nn.Module` 给你的是**一段前向计算**，
-时间维是 Python `for`；要把它变成 IR，得先 `torch.export` + `hop.scan`——
-§1 的实测说明了为什么 `for` 展开后图不可用。这一步没有现成工具，所以是"未做"，
-不是"不支持"。
+**203,530 参数**，和 `examples/mnist_hw.snn` 逐位相同；训 1 epoch 的 `test_acc`
+都是 **0.9198**。`snn.Module` 把图 traced 成同一份 IR，后面没有任何分叉
+（`tests/test_forward_front.py::test_forward_matches_handle_style_exactly` 锁住这一点）。
 
-所以现在能写的是这两种：
+### 为什么不直接用 `torch.jit.trace`
 
-| 你写的东西 | 工具怎么处理 | 能编译 |
-|---|---|---|
-| `.snn` 文本 | 解析成 IR | 能 |
-| `snn.Net` 调用序列（下面这种） | 方法直接往 IR 里加节点 | 能 |
-| `class SNN(nn.Module)` | 按类型拒绝，说明原因 | **不能** |
+这是"用 Python 语法描述 SNN"最自然的想法，实测行不通。同样一个 LIF cell，
+时间循环写在 `forward` 里，`torch.jit.trace` 跑一遍得到的是**展开后的图**：
+
+| T | `torch.jit.trace` 图节点数 | 本工具 `forward` 图节点数 |
+|---:|---:|---:|
+| 1 | 13 | 5 |
+| 2 | 17 | 5 |
+| 4 | 25 | 5 |
+| 8 | 41 | 5 |
+| 16 | 73 | 5 |
+| 32 | 137 | 5 |
+
+trace 的图 **∝ T**，本工具的图**恒定**。三个后果，每一个都是硬伤：
+
+1. **T 被固化进图里**。想在部署时把 T 从 8 改成 16，得重新 trace 一份。
+2. **"这是一个循环"这个信息丢了**。下游看到的是一串重复的算子，认不出 cell，
+   没法做 `T=8 > 4 → looped` 这类决策（上面 summary 里那条 `schedule` pass 就是）。
+3. **硬件时序无从对应**。NIR/SNN-MLIR 要的是"一个 cell + T 参数"，给一份 137 节点的
+   平铺图，等于让后端自己再猜一遍哪 4 个节点是一步。
+
+所以本工具**不用 trace**，而是把 `forward` 在"T=1 的符号状态"下执行一遍：
+每次 `self.fc1(x)` 只追加一个 IR 节点、返回一个句柄（`Tensor` 只有 `id` 和 `shape`，
+没有数据），循环体走一次就停。得到的正是那个 cell。
+
+代价是三条限制，都写成显式报错，不会静默出错：
+
+| 你写了 | 结果 |
+|---|---|
+| `if x.sum() > 0:` 数据相关分支 | 图必须是静态的，这种写不了（报错） |
+| `h + 1`、`torch.relu(h)` | 报 `cannot add int to a tensor handle`，只有 tensor 句柄存在 |
+| `return None` / 返回 tuple | 报 `forward returned NoneType, not a tensor handle` |
+
+### 两种 `for`，含义不同
+
+这是 Python 前端相对 `.snn` 的**全部价值**：`.snn` 的 `pipeline:` 是平铺的，
+写不出"N 个相同 block"。在 `forward` 里这是普通循环：
 
 ```python
-net = snn.Net("mnist", steps=8)
-x = net.encode(net.input(1, 28, 28), "rate")
-h = net.neuron(net.dense(x, 256), snn.LIF(tau=2.0))
-net.output(h)
+def forward(self, x):
+    for _ in range(self.depth):      # 展开：真的生成 depth 个 block
+        x = self.lif(self.fc(x))
+    return self.head(x)
 ```
 
-两种能写的，产出同一张图、走同一个 `finalize()`、生成同一份 `.py`。
+```console
+$ python examples/mnist_forward.py --dry-run     # DeepNet 那一段
+fc      dense     [32]              e
+lif     neuron    [32]              fc
+fc_2    dense     [32]              lif
+lif_2   neuron    [32]              fc_2
+fc_3    dense     [32]              lif_2
+lif_3   neuron    [32]              fc_3
+head    dense     [10]              lif_3
+out     output    [10]              head
+```
+
+`fc` / `fc_2` / `fc_3` 是**三个独立节点**。注意 weight 也被复制了三份——
+PyTorch 里同一个 `self.fc` 用在三处是共享权重，这里不是（`docs/GAPS.md` #27）。
+
+另一类 `for` 是时间循环。写了不算错（trace 时被钉成一次），但**没必要写**。
+危险的是把时间循环写成字面量：`steps = 8` 的网络里写 `for t in range(8)`，
+会被当成"展开 8 个 block"——图能编译、能训练、数字看着也像，只是完全错了。
+所以这一条是硬报错：
+
+```console
+SNNError: Typo.forward loops over range(8) -- the same number as steps
+    hint: write range(self.steps) for the time loop; ... A literal range() is
+          treated as block duplication
+```
 
 ### `snn.Net` 是图纸，不是网络
 
-为什么不用 `nn.Module` 那种写法？因为 `forward` 是**运行时**才执行的：你在里面写
-`net.dense(...)`，只有真的喂数据跑起来才会发生，拿不到静态图；而在 `__init__` 里
-`self.fc1 = nn.Linear(...)` 只给出了层，没给出**连接关系**。编译要的是后者。
-
-所以要有一个"只记录、不计算"的阶段——这就是 `snn.Net`。它连 `nn.Module` 都不是：
+`forward` 前端在内部就是靠 `snn.Net` 记录节点的：`self.fc1(x)` 最终落到
+`Net.dense(...)`。所以下面这个底层 API 依然是一等公民——`forward` 能表达的它都能
+表达，反过来不成立（`forward` 只认你在 `forward` 里写出来的东西）。
+它连 `nn.Module` 都不是：
 实测 `isinstance(net, nn.Module)` 为 `False`、没有 `parameters()`：
 
 ```console
@@ -196,8 +279,8 @@ for i in range(3):
 
 所以"网络结构"这个问题，在本仓库里有三个不同答案，取决于问的是哪一层：
 **写的是什么**（源）、**优化后剩什么**（IR，可 `net.describe()` 打印）、
-**跑的是什么**（模块，可 diff 的 PyTorch）。两种前端（`.snn` 文本与上面的 Python
-调用）由同一个 `finalize()` 收口（`pipeline.py:67`），不可能在优化或代码生成阶段分叉。
+**跑的是什么**（模块，可 diff 的 PyTorch）。三种前端（`.snn` 文本、`snn.Net` 调用、`snn.Module` 的
+`forward`）由同一个 `finalize()` 收口（`pipeline.py:67`），不可能在优化或代码生成阶段分叉。
 
 ## 1. 时间循环是分水岭（实测）
 

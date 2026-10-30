@@ -8,15 +8,30 @@ Quick start
 >>> model = Net()
 """
 from .errors import Diagnostic, DiagnosticBag, SNNError
+from .forward_front import (
+                            Add,
+                            AvgPool,
+                            Concat,
+                            Conv2d,
+                            Dense,
+                            Dropout,
+                            Flatten,
+                            Layer,
+                            MaxPool,
+                            Module,
+)
 from .ir import IRGraph, IRNode, NeuronSpec, TemporalSpec
 from .pipeline import CompileResult, compile_file, compile_source, load_module
 from .pyfront import ALIF, IF, LIF, Net, Neuron, Tensor, custom, net
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "SNNError", "Diagnostic", "DiagnosticBag", "IRGraph", "IRNode",
     "NeuronSpec", "TemporalSpec", "CompileResult", "compile_file",
     "compile_source", "load_module", "__version__",
-    # Python-embedded front end
+    # Python-embedded front end (handle style)
     "Net", "net", "Tensor", "Neuron", "LIF", "IF", "ALIF", "custom",
+    # forward-style front end
+    "Module", "Layer", "Dense", "Conv2d", "MaxPool", "AvgPool", "Flatten",
+    "Dropout", "Add", "Concat",
 ]

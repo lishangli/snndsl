@@ -3,7 +3,7 @@
 [![CI](https://github.com/lishangli/snndsl/actions/workflows/ci.yml/badge.svg)](https://github.com/lishangli/snndsl/actions/workflows/ci.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![version](https://img.shields.io/badge/version-0.3.0-informational)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.4.0-informational)](CHANGELOG.md)
 
 **用 Python 写网络，用 `.snn` 存档**，编译成四样东西：
 **可读的 PyTorch 源码**、**带数字的推理成本**、**能交给神经形态硬件的 NIR**、
@@ -16,28 +16,55 @@
 
 ## 长什么样
 
+和写任何 PyTorch 模型一样，只是基类换成 `snn.Module`：
+
 ```python
 import snndsl as snn
 
+class MnistNet(snn.Module):
+    input_shape = (1, 28, 28)          # 图是静态的，形状要先知道
+    steps = 8                          # T，由编译器套上去
+    reset = "zero"                     # NIR 能精确表示的那种复位
+
+    def __init__(self):
+        super().__init__()
+        self.fc1  = snn.Dense(256, scale=2.0)
+        self.fc2  = snn.Dense(10)
+        self.lif1 = snn.LIF(tau=2.0, reset="zero")
+        self.lif2 = snn.LIF(tau=2.0, reset="zero")
+
+    def forward(self, x):
+        x = self.lif1(self.fc1(x))
+        return self.lif2(self.fc2(x))
+
+result = MnistNet().compile()      # 7 个 IR 节点 -> 一段 PyTorch 源码
+```
+
+`forward` 只描述**一个时间步**，所以里面不需要 `for t in range(T)`，图也就不会
+随 T 膨胀。这不是细节：同一张网络，`torch.jit.trace` 在 T=32 时给出 **137 个
+节点**，这里始终是 **5 个**（[实测表](docs/PYTHON_FRONTEND.md#为什么不直接用-torchjittrace)）。
+原因是 trace 把 Python 循环当成普通控制流展开，而 T 恰恰是要交给硬件的那个参数。
+
+想精确控制节点名和每个 op 时，同一张图也可以直接调建图器：
+
+```python
 LIF = snn.LIF(tau=2.0, reset="zero")
 net = snn.Net("mnist", steps=8)                 # 建图器，不是 nn.Module
 x   = net.encode(net.input(1, 28, 28), "rate")
 h   = net.neuron(net.dense(x, 256, scale=2.0, name="h1"), LIF)
 net.output(net.neuron(net.dense(h, 10, name="y"), LIF))
-
-result = net.compile()                          # 7 个节点 -> 119 行 PyTorch
-Net    = snn.load_module(result, "mnist.py")    # 到这里才有 forward 和权重
+result = net.compile()
 ```
 
 `net` 全程只持有 IR：**没有权重、没有 `forward`、`parameters()` 不存在**，
 `compile()` 之后自我封闭。真正能训练的是 `compile()` 生成的普通 `nn.Module`
 （203,530 个参数，`state_dict` 里是 `w_h1 / b_h1 / w_y / b_y`）。
-两种写法（上面这段 Python，和等价的 `.snn` 文本）建的是同一张图，共用同一个
-`finalize()`，所以不会在优化或代码生成阶段分叉。
+三种写法（上面的 `forward`、这段建图器调用、等价的 `.snn` 文本）建的是同一张图，
+共用同一个 `finalize()`，所以不会在优化或代码生成阶段分叉。
 
-**边界**：`class SNN(nn.Module)` 那种写法本工具读不了，会按类型拒绝
-（`exposes SNN, not snndsl.Net`）。`nn.Module` 的 `forward` 是运行时才执行的，
-拿不到静态图；接这条路要先 `torch.export` + `hop.scan`，是待办而不是已有功能。
+**边界**：裸的 `torch.nn.Module` 仍然读不了。`snn.Module` 能被静态读出，是因为
+它的层调用返回的是 IR 句柄而不是 `torch.Tensor`；凭空接管一个普通 `nn.Module`
+要先 `torch.export` + `hop.scan`，那是待办而不是已有功能。
 细节：[`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) §0。
 
 ## 它补的是哪一段
