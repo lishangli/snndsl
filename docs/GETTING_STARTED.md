@@ -305,7 +305,7 @@ snndsl deploy examples/mnist_hw.snn --verify --weights build_e2e/mnist_hw.pt \
 **必须说清楚的一步之遥**：本仓库没有在 Xylo / Loihi / Speck 真机上跑过。
 上表测的是「厂商的 Python 神经元能不能读、能不能复现」，不是「芯片的定点行为」。
 定点截断、位宽、片上噪声属于未测项，本地工作改变不了。这条登记在
-[`GAPS.md`](GAPS.md) 第 1 条，验证命令也写在那里。
+[`GAPS.md`](GAPS.md) 第 14 条，验证命令也写在那里。
 
 顺带两个只有导出之后才会想知道的问题：
 
@@ -379,6 +379,42 @@ snndsl infer examples/mnist_hw.snn --weights build_e2e/mnist_hw.pt --samples 100
 --- latency (10000 samples/batch, 5 repeats) ---
   mean  362.78 ms   p50  392.57 ms   p95  396.79 ms
   throughput 27,565 samples/s
+```
+
+### 把它放进你自己的程序（软件侧部署）
+
+不想走命令行，三行就够。权重从 checkpoint 加载，返回逐样本预测、每层脉冲数、延迟：
+
+```python
+import torch
+from snndsl.infer import DeployedModel
+
+net = DeployedModel.load("examples/mnist_hw.snn",
+                         weights="build_e2e/mnist_hw.pt",
+                         out_dir="build_e2e")
+r = net.predict(batch_of_images, topk=3)
+
+r["pred"]                 # [7, 2, 1]
+r["topk"]                 # [{'class': '7', 'score': 0.2319}, ...]
+r["spikes_per_layer"]     # {'h1': {'rate': 0.33, 'spikes_per_sample': 681.0}, 'y': {...}}
+r["latency_ms_per_sample"]  # 0.55
+```
+
+（真实输出；那 0.2319 就是上一节说的 one-hot 置信度，别拿它当概率用。）
+
+编译产物 `build_e2e/mnist_hw.py` 也是可直接 import 的普通 `nn.Module`——
+它只 import `torch` 和 `snndsl.backends.runtime`（后者只依赖 numpy），
+所以交付时带上 `snndsl` 这个包就够，不需要编译器本身：
+
+```python
+import sys; sys.path.insert(0, "build_e2e")
+import torch
+from mnist_hw import SnnNet
+
+net = SnnNet()
+ckpt = torch.load("build_e2e/mnist_hw.pt")      # {"state_dict": ..., "program": ..., ...}
+net.load_state_dict(ckpt["state_dict"])         # missing=[], unexpected=[]
+net(torch.zeros(2, 1, 28, 28))                  # -> (2, 10)
 ```
 
 ---
