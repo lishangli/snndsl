@@ -494,6 +494,7 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | [`docs/GAPS.md`](docs/GAPS.md) | 缺口登记表：归属、状态、验证命令 |
 | [`docs/UPSTREAM_ISSUES.md`](docs/UPSTREAM_ISSUES.md) | 四条可提交的上游 issue |
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | 生态位，含真实 GitHub 数据 |
+| [`docs/MECHANISMS.md`](docs/MECHANISMS.md) | **机制级调研**：各家独有的那个机制是什么、边界在哪、我们该抄哪个；附五个新机制提案与证伪条件 |
 | [`docs/ECOSYSTEM_GAPS.md`](docs/ECOSYSTEM_GAPS.md) | 训练/交换/编译/硬件五段缺陷清单，含外部模型的实测数字 |
 | [`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) | 从 PyTorch 往下：哪一段能复用，分水岭是时间循环 |
 | [`docs/DESIGN_A_NETWORK.md`](docs/DESIGN_A_NETWORK.md) | **怎么从零设计一个新的 SNN**：七步决策（读出→神经元→复位→池化→T→宽度）、四组实测取舍、三个真踩过的坑 |
