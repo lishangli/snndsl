@@ -317,6 +317,20 @@ def output_stream(nir_graph: Any, sim: Dict[str, Any],
     src = output_source(nir_graph)
     key = "membrane" if mode == "membrane" else "spikes"
     stream = sim.get(key, {}).get(src) if src else None
+    if stream is None and src:
+        # The Output node is driven by something that is not a neuron: a linear
+        # classifier head, a conv, a merge. There is no spike train to decode, so
+        # the readout circuit integrates the node's own value over the window.
+        #
+        # Falling back to ``sim["output"]`` (the *last* step) here is wrong and
+        # was silently so: codegen accumulates every output node over T and
+        # divides by T (``rate_readout``), so a head fed by spikes is read as a
+        # window average while the interpreter read one instant. Measured on the
+        # gesture example: max|Δ|=1.05 with top-1 agreement 100% -- a fake
+        # mismatch that made a correct export look broken.
+        per_step = sim.get("outputs", {}).get(src)
+        if per_step:
+            stream = torch.stack([torch.as_tensor(v).float() for v in per_step])
     return stream if (stream is not None and stream.numel()) else None
 
 

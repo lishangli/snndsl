@@ -44,6 +44,9 @@ bug / 标准的空白）、以及一条能当场验证的命令。
 | 30 | 终端节点按字符串 `input`/`output` 找 | **上游** snn-mlir | 已绕开 · `export --target snn-mlir` |
 | 31 | `snndsl export` 不传 `-o` 时写出名为 `build` 的无扩展名文件 | **我们的** | 已关闭 · 默认按输入名派生 |
 | 32 | `snn-mlir run` 需要的 `snn-opt` 不在 PyPI | **外部** | 未通 · 需从 MLIR/LLVM 源码构建 |
+| 33 | 表达不了「随时间变化的外部输入」，三种编码都是静态→脉冲 | **我们的** | 开着 · 只能喂事件累积帧 |
+| 34 | `output` 接非神经元时 `readout` 是空设置，两种读法生成同一份代码 | **我们的** | 开着 · 输出层改造成神经元可绕过 |
+| 35 | float32 下阈值附近的脉冲会翻转，`equivalent` 判据随之抖动 | **固有** | 不修 · 判据要配 `top1_agreement` 看 |
 
 ---
 
@@ -604,6 +607,70 @@ $ pip install snn-opt && python -c "import snn_opt; print(dir(snn_opt)[:4])"
 状态：**未通**。所以链路终点是 `build/` 目录（`network.mlir` + `main.c` + 数据头），
 不是 `results.csv`。`snndsl/backends/snn_mlir.run()` 把后端的原始报错带回来，不假装跑过。
 要闭合这一环只能编 LLVM，不属于本仓库范围。
+
+### 33 · 表达不了随时间变化的外部输入 —— 我们的（开着）
+
+三种编码器没有一个能把**逐帧变化**的输入送进网络：
+
+```python
+def rate_current(x, gain=1.0):     return x * gain       # 恒定电流
+def poisson_encode(x, gain=1.0):   return rand < x*gain  # 每步独立采样
+def latency_encode(x, t, ...):     return delay <= t     # 静态图 -> 首脉冲时刻
+```
+
+三个都假设 `x` 是一张**静止**的图。而 DVS / 音频 / 雷达的输入本身逐帧在变。
+`input` 的形状也不带时间维，`temporal.steps` 是网络内部的循环，不是输入的长度。
+
+后果：`examples/gesture_snn.py` 只能喂「10 帧累积成一张 2×32×32 的图」，
+网络用内部 T 步去积分它 —— 时序信息在累积那一步就已经丢了。它做的是
+**事件累积帧分类**，不是事件流分类，两者在文献里经常被混为一谈。
+
+状态：**开着**。修法不是加个参数：`input` 要允许首维为时间，`encode` 要加
+`event`/`identity` 方案（让第 t 步直接吃 `x[t]`），成本模型和 `deploy` 的保真
+对比都要跟着知道「输入是序列」。`nir_sim.simulate` 里其实已经有
+`is_sequence=True` 这条路径，缺的是前端能声明它。
+
+### 34 · `readout` 在输出接非神经元时是空设置 —— 我们的（开着）
+
+codegen 只在「output 的上游是 neuron」时才区分两种读法：
+
+```python
+if self.readout == "membrane":
+    producer = self.prod.get(n.inputs[0])
+    if producer is not None and producer.op == "neuron":
+        src = f"{self.var(producer.id)}_mem"
+```
+
+所以 `return self.fc2(self.lif3(...))` 这种「线性头」写法下，`membrane` 与
+`spikes` 生成**完全相同的代码**。实测：两种配置训练出同样的 92.9%、同样的置信度、
+同样的 logit 取值分布 —— 因为代码根本一样。
+
+而 `deploy.analyze` 仍然按 `readout` 字段报 BLOCKER，于是出现
+「分析说在读膜电位、代码其实在读线性层输出」的分裂。
+
+状态：**开着**。本例的绕法是让输出层自己也发放（`fc2 -> lif4 -> output`），
+`readout` 才有意义。根治要么在 `compile` 时检测「readout 不会生效」并警告，
+要么把 readout 从图的全局属性改成 output 节点的属性。前者便宜，但会打到
+`examples/mnist_mlp.snn` 这类现有网络（它们的 output 就接 dense）。
+
+### 35 · float32 下阈值附近的脉冲会翻转 —— 固有，不修
+
+同一份网络、同一批输入，PyTorch 走 `F.linear`、解释器走 `@`，累加顺序不同，
+差约 1e-7。膜电位恰好压在阈值上时，这个差决定发不发放，一个脉冲的翻转在
+logits 上是 **0.03 ~ 0.08** 的跳变。换种子实测：
+
+```console
+seed 0: max|d|=6.74e-02  top1=1.0
+seed 1: max|d|=0.00e+00  top1=1.0
+seed 2: max|d|=8.32e-02  top1=1.0
+```
+
+`equivalent` 的判据是相对误差 < 1e-3，所以这种情况会报 `False` ——
+**这不是导出错了**，是 SNN 的离散判决放大了浮点误差。
+
+状态：**固有**，不修。判据要配着 `top1_agreement` 看：后者 1.0 而前者 False，
+说明是边界翻转而不是语义差异。真要逐位等价，只能让模拟器用 float64 并与目标端
+的累加顺序对齐 —— 那是仿真器的责任，不是编译器的。
 
 ---
 

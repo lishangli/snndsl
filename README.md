@@ -10,6 +10,8 @@
 **能被 MLIR 工具链读的 `.mlir`**。
 外加一个别人不做的事——回答「这样导出去之后，还是同一个网络吗」，逐脉冲给证据。
 
+> **要设计自己的网络**： [`docs/DESIGN_A_NETWORK.md`](docs/DESIGN_A_NETWORK.md) 用一个事件相机手势识别的完整例子，讲清「先定部署约束、再定结构」的顺序。
+>
 > **想先看怎么用**： [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) 是从「写 30 行网络」
 > 到「导出、验证、交给硬件」的一条命令链，或者直接 `bash examples/e2e.sh` 跑完它。
 > 想先知道它值不值得用，继续往下读。
@@ -494,6 +496,7 @@ out["spikes_per_layer"]                     # 每层发放率与脉冲数
 | [`docs/ECOSYSTEM.md`](docs/ECOSYSTEM.md) | 生态位，含真实 GitHub 数据 |
 | [`docs/ECOSYSTEM_GAPS.md`](docs/ECOSYSTEM_GAPS.md) | 训练/交换/编译/硬件五段缺陷清单，含外部模型的实测数字 |
 | [`docs/PYTHON_FRONTEND.md`](docs/PYTHON_FRONTEND.md) | 从 PyTorch 往下：哪一段能复用，分水岭是时间循环 |
+| [`docs/DESIGN_A_NETWORK.md`](docs/DESIGN_A_NETWORK.md) | **怎么从零设计一个新的 SNN**：七步决策（读出→神经元→复位→池化→T→宽度）、四组实测取舍、三个真踩过的坑 |
 | [`docs/SNN_MLIR.md`](docs/SNN_MLIR.md) | 把 `.nir` 交给 SNN-MLIR 的实测：改了什么、断在哪、`supported` 与 `faithful` 的区别 |
 | [`docs/deploy_report_mnist.html`](docs/deploy_report_mnist.html) | 一份可以直接发给别人的部署报告 |
 

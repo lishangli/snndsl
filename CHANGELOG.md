@@ -14,6 +14,27 @@ its numbers are checkable:
 
 ### Added
 
+- **`examples/gesture_snn.py` + `docs/DESIGN_A_NETWORK.md`：从零设计一个新 SNN 的完整例子。**
+  任务不是 MNIST 复刻，而是事件相机的 6 类手势识别——右扫和左扫在累积图上的
+  亮度总量几乎相同（ON 0.0576 vs 0.0579），差别只在 ON/OFF 的空间分布，所以网络
+  必须真的处理极性。480 张训练 / 240 张测试，13 个 IR 节点、136,470 参数，
+  BPTT 8 epoch（17.6s）到 **93.75%**。
+- 四组设计实验，每组冷启动重训、数字可复现：
+  - **T**：4/8/16 → 92.9 / 93.8 / 94.2%，而 MAC 是 6.42 / 12.85 / 25.70M。
+    T 是延迟预算不是精度旋钮，脚本按「1 个点以内取最小 T」自动选。
+  - **读出**：membrane 93.8%（置信度 0.8069，1440 个 logit 全不同）vs
+    spikes 86.2%（置信度 0.3230，全测试集只有 **9 种** logit 取值 = T+1）。
+    membrane 精度高但 `deploy.analyze` 判 BLOCKER，spikes 能部署但掉 7.5 点。
+    这是本项目里第一次把一个取舍的两端都量化出来。
+  - **极性消融**：把 ON/OFF 合并成单通道 → 87.1%（掉 6.7 点），证明那两通道不是装饰。
+  - **两种配置**：A（LIF+avg+zero）93.8% 且 `faithful=True`；
+    B（ALIF+max+subtract）95.8% 但 `faithful=False`。可部署版是拿精度换的，
+    而 +2.1 点在 240 张测试集上（±3 点置信区间）还落在噪声里。
+- 文档里记了三个真踩过的坑：输入量级太小导致网络全死（`lif1` 发放率 7e-4、
+  后两层恒 0、loss 卡在 ln(6) 三个 epoch）、`readout` 在输出接线性层时是空设置
+  （两种读法生成同一份代码）、保真验证器自己误报。
+
+
 - **SNN-MLIR 互通（已实测）**：`snndsl export --target snn-mlir` 产出的 `.nir` 能直接过
   `snn-mlir check`（10/10 示例结论与预检一致）、被 lower 成 SNN-dialect MLIR、被 codegen
   成 C 驱动。lower 之后仍是**一个 `func.func`、零个 `scf.for`**，膜电位是函数参数——
@@ -80,6 +101,14 @@ its numbers are checkable:
   「两种写法」不是口号。
 
 ### Fixed
+
+- **`nir_sim` 与 codegen 对读出的定义不一致，把正确的导出报成 `equivalent=False`。**
+  codegen 对每个 output 节点在 T 步上累加再除以 T；解释器在「output 上游不是神经元」
+  （线性分类头）时退化成取**最后一步**。在手势网络上表现为 max|Δ|=1.054、
+  mean|Δ|=0.233，而 top1 一致率 100%——一个没问题的导出被判成坏的。
+  现在回退到 T 步的流再求均值，修完 max|Δ|=0.000e+00。
+  回归测试 `test_output_stream_returns_the_window_not_the_last_step` 直接断言
+  stream 的形状是 `(T, B, N)`，不去比浮点（浮点会因阈值翻转而抖动，见 GAPS #35）。
 
 - **`snndsl export x.snn` 会写出一个叫 `build`、没有扩展名的文件。** `export` 复用了
   `build`/`run` 的参数组，于是继承了 `-o` 的默认值 `"build"`；不传 `-o` 时输出路径就是
